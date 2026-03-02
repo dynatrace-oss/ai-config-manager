@@ -140,6 +140,25 @@ aimgr uninstall skill/pdf-processing
 aimgr install package/web-dev-tools
 ```
 
+### Verify and Repair
+
+Check your project for installation issues:
+```bash
+aimgr verify                              # Diagnose issues (read-only)
+aimgr repair                              # Fix broken symlinks, install missing resources
+aimgr repair --reset                      # Also remove unmanaged files
+aimgr repair --prune-package              # Also clean stale manifest entries
+aimgr repair --reset --prune-package --force  # Full cleanup, no prompts
+```
+
+Fix repository metadata:
+```bash
+aimgr repo repair                         # Fix missing/orphaned metadata
+aimgr repo repair --dry-run               # Preview what would be fixed
+```
+
+See [Repairing Resources](repair.md) for the complete guide.
+
 ### Repository Management
 
 List resources in repository:
@@ -181,6 +200,7 @@ aimgr install skill/foo --force
 ## Next Steps
 
 - **[Sources](sources.md)** - Detailed guide to managing sources in ai.repo.yaml
+- **[Repairing Resources](repair.md)** - Fix broken installations and clean up projects
 - **[Configuration](configuration.md)** - Repository path, targets, and settings
 - **[Pattern Matching](../reference/pattern-matching.md)** - Advanced pattern syntax
 - **[Output Formats](output-formats.md)** - JSON/YAML output for scripting

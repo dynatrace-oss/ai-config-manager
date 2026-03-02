@@ -33,6 +33,8 @@ aimgr repo describe <pattern> --format=<format>
 aimgr repo info --format=<format>           # NEW
 aimgr repo verify --format=<format>         # NEW (replaces --json)
 aimgr repo prune --format=<format>          # NEW
+aimgr repair --format=<format>              # NEW
+aimgr repo repair --format=<format>         # NEW
 aimgr list --format=<format>
 ```
 
@@ -1179,6 +1181,8 @@ echo "$(date): Resource sync successful ($added added)" >> "$LOG_FILE"
 | `repo info` | table, json, yaml | Repository statistics |
 | `repo verify` | table, json, yaml | Repository integrity checks |
 | `repo prune` | table, json, yaml | Workspace cleanup |
+| `repair` | table, json | Fix project installations |
+| `repo repair` | text, json | Fix repository metadata |
 | `list` | table, json, yaml | Installed resources (simple) |
 | `install` | table, json, yaml | Install resources |
 | `uninstall` | table, json, yaml | Uninstall resources |

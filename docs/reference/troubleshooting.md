@@ -105,7 +105,13 @@ aimgr install skill/foo --force
 
 **Problem:** After removing a resource from the repository, projects have broken symlinks.
 
-**Solution:** Uninstall from projects before removing from repository:
+**Solution:** Use `aimgr repair` to fix broken symlinks automatically:
+```bash
+cd ~/project1
+aimgr repair    # Fixes broken symlinks, reinstalls from repo if possible
+```
+
+Or uninstall cleanly before removing from repository:
 ```bash
 # 1. First uninstall from all projects
 cd ~/project1 && aimgr uninstall skill/foo
@@ -113,6 +119,42 @@ cd ~/project2 && aimgr uninstall skill/foo
 
 # 2. Then remove from repository
 aimgr repo remove skill foo
+```
+
+### Stale entries in ai.package.yaml
+
+**Problem:** `ai.package.yaml` references resources that no longer exist in the repository.
+
+**Solution:** Use `aimgr repair --prune-package` to clean up:
+```bash
+# Preview what would be removed
+aimgr repair --prune-package --dry-run
+
+# Remove invalid references
+aimgr repair --prune-package --force
+```
+
+### Unmanaged files in resource directories
+
+**Problem:** Resource directories contain files that weren't installed by aimgr.
+
+**Solution:** Use `aimgr repair --reset` to find and remove unmanaged files:
+```bash
+# Preview what would be removed
+aimgr repair --reset --dry-run
+
+# Remove unmanaged files
+aimgr repair --reset --force
+```
+
+### Repository metadata issues
+
+**Problem:** `aimgr repo verify` reports missing metadata or orphaned metadata files.
+
+**Solution:** Use `aimgr repo repair` to fix repository-level metadata:
+```bash
+aimgr repo repair              # Fix auto-fixable issues
+aimgr repo repair --dry-run    # Preview what would be fixed
 ```
 
 ---
@@ -139,6 +181,10 @@ aimgr install skill/<TAB>
 ```
 
 ---
+
+## See Also
+
+- **[Repairing Resources](../user-guide/repair.md)** - Complete guide to `aimgr repair` and `aimgr repo repair`
 
 ## Getting More Help
 

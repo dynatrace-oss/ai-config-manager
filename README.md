@@ -95,6 +95,7 @@ Complete documentation is available in the `docs/` directory:
 - **[Getting Started](docs/user-guide/getting-started.md)** - Installation, setup, and common workflows
 - **[Configuration](docs/user-guide/configuration.md)** - Config file, environment variables, field mappings
 - **[Sources](docs/user-guide/sources.md)** - Managing local and GitHub sources (`ai.repo.yaml`)
+- **[Repairing Resources](docs/user-guide/repair.md)** - Fix broken installations, clean up projects
 
 ### Reference
 

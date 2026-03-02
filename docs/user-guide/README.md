@@ -27,6 +27,17 @@ Complete guide to configuring aimgr, including repository path, installation tar
 - **Field mappings** for tool-specific values (e.g., model names)
 - Environment variable interpolation
 
+### [Repairing Resources](repair.md)
+
+Diagnose and fix broken installations, clean up unmanaged files, and prune stale manifest entries.
+
+**Key Topics:**
+- `aimgr repair` — fix broken symlinks, reinstall missing resources
+- `--reset` — remove unmanaged files from resource directories
+- `--prune-package` — clean invalid references from `ai.package.yaml`
+- `aimgr repo repair` — fix repository metadata issues
+- Migrating from deprecated `verify --fix`
+
 ### [Sources](sources.md)
 
 Managing remote and local resource sources using `ai.repo.yaml`.
@@ -63,6 +74,9 @@ aimgr install skill/code-review
 | `aimgr repo list` | List all resources in repository |
 | `aimgr install <pattern>` | Install resources to project |
 | `aimgr uninstall <pattern>` | Uninstall resources from project |
+| `aimgr verify` | Check installation health |
+| `aimgr repair` | Fix broken installations |
+| `aimgr repo repair` | Fix repository metadata |
 
 ## See Also
 

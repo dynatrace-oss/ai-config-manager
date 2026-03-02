@@ -1,6 +1,6 @@
 ---
 name: ai-resource-manager
-description: "Manage AI resources (skills, commands, agents) using aimgr CLI. Use when user asks to: (1) Install/uninstall resources, (2) Manage repository, (3) Validate resources for developers, (4) Troubleshoot aimgr issues."
+description: "Manage AI resources (skills, commands, agents) using aimgr CLI. Use when user asks to: (1) Install/uninstall resources, (2) Manage repository, (3) Validate resources for developers, (4) Discover useful resources for a project, (5) Troubleshoot aimgr issues."
 ---
 
 # AI Resource Manager
@@ -12,234 +12,86 @@ Manage AI resources using `aimgr` CLI. Resources are stored once in
 
 ## ⚠️ IMPORTANT: Agent Safety Rules
 
-**Before running any mutating command, you MUST ask the user for explicit approval:**
+**Before running any mutating command, you MUST ask the user for explicit approval.**
 
-**Mutating operations that require user approval:**
+**Mutating operations (require approval):**
 
-- `aimgr install` / `aimgr uninstall` - Modifies project symlinks
-- `aimgr repo add` - Adds resources to repository
-- `aimgr repo sync` - Updates repository from remote sources
-- `aimgr repo remove` - Permanently deletes resources
+- `aimgr install` / `aimgr uninstall` — Modifies project symlinks
+- `aimgr init` — Creates `ai.package.yaml` manifest
+- `aimgr repair` — Fixes broken installations
+- `aimgr clean` — Removes orphaned symlinks
+- `aimgr repo add` — Adds sources to repository
+- `aimgr repo sync` — Updates repository from remote sources
+- `aimgr repo remove` — Removes sources (and all their resources) from repository
+- `aimgr repo repair` / `aimgr repo drop` / `aimgr repo prune` — Repository maintenance
 
 **Read-only operations (safe to run):**
 
-- `aimgr list` - Show installed resources
-- `aimgr repo list` - Show available resources
-- `aimgr repo describe` - Show resource details
-- `aimgr repo verify` - Check repository health
-- `aimgr repo add --dry-run` - Validate without changes
+- `aimgr list` — Show installed resources
+- `aimgr verify` — Check project installation health
+- `aimgr repo list` — Show available resources
+- `aimgr repo describe` — Show resource details
+- `aimgr repo info` — Show repository metadata
+- `aimgr repo verify` — Check repository health
+- `aimgr repo add --dry-run` — Validate without changes
 
 **Never assume permission. Always ask first.**
 
 ---
 
-## Quick Reference
+## Use Case 1: Install / Uninstall Resources
 
-```bash
-# Install/Uninstall
-aimgr list                      # Show installed resources
-aimgr repo list                 # Show available resources
-aimgr install skill/name        # Install resource
-aimgr uninstall skill/name      # Remove resource
+Install, uninstall, verify, and repair AI resources in the current project.
+Covers `aimgr install`, `uninstall`, `list`, `verify`, `repair`, `clean`, `init`,
+and the `ai.package.yaml` manifest.
 
-# Repository Management
-aimgr repo add ./path        # Import from local directory
-aimgr repo add gh:user/repo  # Import from GitHub
-aimgr repo sync                 # Sync from configured sources
-aimgr repo remove skill/name    # Remove from repository
-
-# Validation (for developers)
-aimgr repo add ./my-skill --dry-run  # Validate without adding
-```
-
-📚 **Command syntax:** Run `aimgr [command] --help` for detailed usage and examples
-
----
-
-## Use Case 1: Install/Uninstall Resources
-
-Install skills, commands, or agents to your current project.
-
-### Workflow
-
-**1. List available resources:**
-
-```bash
-aimgr repo list --format=json
-```
-
-Parse JSON and present to user in friendly format (don't dump raw JSON).
-
-**2. Install resources:**
-
-```bash
-# Single resource
-aimgr install skill/pdf-processing
-
-# Multiple resources
-aimgr install skill/pdf-processing command/test agent/reviewer
-
-# Multiple tools (install to Claude, OpenCode, and Copilot)
-aimgr install skill/pdf-processing --target claude,opencode,copilot
-
-# Pattern matching
-aimgr install "skill/pdf*"
-```
-
-**3. Verify installation:**
-
-```bash
-aimgr list
-```
-
-### 4. ⚠️ CRITICAL: Restart Reminder
-
-**ALWAYS remind users to restart their AI tool after installation.**
-
-Skills load at startup. Users must close and reopen Claude Code/OpenCode/
-VS Code/Windsurf to activate new resources.
-
-**Template:**
-
-```text
-⚠️ **Restart Required:** Close and reopen [Tool Name] to load the new resources.
-```
-
-### Uninstall
-
-```bash
-aimgr uninstall skill/name
-```
-
-📚 **Detailed syntax:** `aimgr install --help` and `aimgr uninstall --help`
+📖 **Full guide:** [references/install-uninstall.md](references/install-uninstall.md)
 
 ---
 
 ## Use Case 2: Manage Repository
 
-Import, sync, or remove resources from the global repository.
+Add sources, sync resources, validate with dry-run, and maintain the global
+repository. Covers `aimgr repo` subcommands: `add`, `sync`, `remove`, `list`,
+`describe`, `info`, `init`, `verify`, `repair`, `drop`, `prune`.
 
-**⚠️ All operations below require user approval before execution.**
-
-### Key Operations
-
-```bash
-# Import resources (ask user first)
-aimgr repo add ~/my-skills/          # Local directory
-aimgr repo add gh:user/repo          # GitHub
-aimgr repo add gh:user/repo@v1.0.0   # Specific version
-
-# Sync from configured sources (ask user first)
-# Reads sync.sources from ~/.config/aimgr/aimgr.yaml
-aimgr repo sync                         # All configured sources
-aimgr repo sync --skip-existing         # Don't overwrite existing
-
-# Remove resources (ask user first)
-aimgr repo remove skill/name            # With confirmation
-aimgr repo remove skill/name --force    # Skip confirmation
-```
-
-**⚠️ Safety Note:** `aimgr repo remove` permanently deletes resources
-and breaks symlinks.
-
-**Note on sync vs import:**
-
-- `repo add` - One-time import from a specific source
-- `repo sync` - Recurring sync from all configured sources in `~/.config/aimgr/aimgr.yaml`
-
-📚 **Detailed syntax:** `aimgr repo --help` for all repository commands
-
----
-<!-- markdownlint-disable MD036 -->
-
-<!-- markdownlint-enable MD036 -->
-## Use Case 3: Validate Resources (for Developers)
-
-<!-- markdownlint-disable MD036 -->
-**For developers creating skills, agents, commands, or packages**
-<!-- markdownlint-enable MD036 -->
-
-Validate that your resources are compatible with aimgr before publishing.
-
-```bash
-# Validate without adding to repository (read-only)
-aimgr repo add ./my-skill --dry-run
-
-# User can choose to add it after validation
-# Agent must ask user before running: aimgr repo add ./my-skill
-
-# Test installation in a temporary directory
-cd /tmp/test && aimgr install skill/my-skill
-```
-
-**What Gets Validated:**
-
-- **Skills** - Directory structure, SKILL.md format, naming rules
-- **Agents** - Single .md file format, frontmatter requirements
-- **Commands** - Must be in `commands/` directory, proper format
-- **Packages** - JSON structure, resource references exist
-
-**Exit Codes:** `0` = Valid, `1` = Validation failed
-
-**⚠️ Agent Note:** Never run `repo add`, `repo remove`, or `repo sync`
-without explicit user approval.
-
-📚 **Complete validation guide:** [references/validating-resources.md](references/validating-resources.md)
+📖 **Full guide:** [references/manage-repository.md](references/manage-repository.md)
 
 ---
 
-## Use Case 4: Troubleshooting
+## Use Case 3: Discover Useful Resources
 
-Common issues and quick fixes:
+Scan a project's tech stack and recommend resources from the repository.
+Look for signal files (e.g., `go.mod`, `package.json`, `.github/`), match
+against available resources, and offer to install relevant ones.
+
+📖 **Full guide:** [references/discover-resources.md](references/discover-resources.md)
+
+---
+
+## Troubleshooting
 
 | Issue | Fix |
-| ------- | ----- |
-| Skills not loading | Restart AI tool |
-| aimgr not found | Install aimgr (see below) |
-| Resource not found | `aimgr repo sync` |
-| Broken symlinks | `aimgr uninstall skill/name && aimgr install skill/name` |
+|-------|-----|
+| Skills not loading | Restart AI tool — skills load at startup |
+| `aimgr` not found | `go install github.com/hk9890/ai-config-manager@latest` |
+| Resource not found | `aimgr repo sync` to pull latest |
+| Broken symlinks | `aimgr repair` (project) or `aimgr repo repair` (repo) |
 | Permission denied | `chmod +x $(which aimgr)` |
 
-### Install aimgr
-
-**Using Go (Recommended):**
-
-```bash
-go install github.com/hk9890/ai-config-manager@latest
-```
-
-**From Source:**
-
-```bash
-git clone https://github.com/hk9890/ai-config-manager.git
-cd ai-config-manager
-make install  # Installs to ~/bin
-```
-
-📚 **Complete troubleshooting guide:** [references/troubleshooting.md](references/troubleshooting.md)
+For project-level troubleshooting, see [references/install-uninstall.md](references/install-uninstall.md).
+For repository-level troubleshooting, see [references/manage-repository.md](references/manage-repository.md).
 
 ---
 
 ## Additional Resources
 
-**Built-in Help:**
-
-- `aimgr --help` - Overview of all commands
-- `aimgr install --help` - Install command with examples
-- `aimgr repo --help` - Repository management commands
-- `aimgr config --help` - Configuration options
-- `aimgr [command] --help` - Help for any command
-
-**Documentation:**
-
-- [troubleshooting.md](references/troubleshooting.md) - Troubleshooting guide
-- [validating-resources.md](references/validating-resources.md) - Resource
-  validation for developers
+📚 **Command syntax:** Run `aimgr [command] --help` for detailed usage and examples.
 
 **Supported Tools:**
 
 | Tool | Skills | Commands | Agents |
-| ------ | -------- | ---------- | -------- |
+|------|--------|----------|--------|
 | Claude Code | ✅ | ✅ | ✅ |
 | OpenCode | ✅ | ✅ | ✅ |
 | GitHub Copilot | ✅ | ❌ | ❌ |
