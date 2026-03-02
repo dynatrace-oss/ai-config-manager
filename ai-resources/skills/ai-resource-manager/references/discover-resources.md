@@ -2,8 +2,6 @@
 
 Scan project context, match against the aimgr repository, and recommend relevant resources.
 
-**Sections:** [Workflow](#workflow) · [Signal Table](#signal-table) · [Filtering & Ranking](#filtering--ranking) · [Notes](#notes-for-agents)
-
 ---
 
 ## Workflow
@@ -25,27 +23,23 @@ If present, parse:
 
 ### 2. Scan for Tech Signals
 
-Look for files that indicate the project's tech stack:
+Look for files that indicate the project's tech stack (e.g. `go.mod` → Go, `.github/workflows/` → GitHub CI, `Dockerfile` → containers):
 
 ```bash
 ls package.json go.mod pyproject.toml Cargo.toml Dockerfile 2>/dev/null
 ls -d .github/workflows .beads docs 2>/dev/null
 ```
 
-See [Signal Table](#signal-table) for the full mapping.
-
 ### 3. Query Available Resources
 
 ```bash
 aimgr repo list --format=json
-aimgr list                      # Already installed — exclude from recommendations
+aimgr list                      # Already installed — don't re-recommend
 ```
 
-### 4. Filter and Rank
+Match resource descriptions against discovered signals. Only recommend what's relevant — e.g. don't recommend a Bitbucket skill for a GitHub repo.
 
-Apply [exclusion rules](#exclusion-rules), then [rank](#ranking) by relevance.
-
-### 5. Present Recommendations
+### 4. Present Recommendations
 
 Use the `question()` tool — **mandatory user interaction, do NOT auto-install**:
 
@@ -67,54 +61,9 @@ After selection: `aimgr install <chosen-resources>`
 
 ---
 
-## Signal Table
+## Notes
 
-| Signal | Indicates |
-|--------|-----------|
-| `package.json` | Node.js / JavaScript / TypeScript |
-| `tsconfig.json` | TypeScript |
-| `go.mod` | Go |
-| `pyproject.toml`, `requirements.txt` | Python |
-| `Cargo.toml` | Rust |
-| `pom.xml`, `build.gradle` | Java / Kotlin |
-| `Gemfile` | Ruby |
-| `Dockerfile`, `docker-compose.yml` | Containers |
-| `.github/workflows/` | GitHub Actions CI/CD |
-| `.gitlab-ci.yml` | GitLab CI/CD |
-| `*.pptx` | Presentation needs |
-| `*.pdf` | PDF processing needs |
-| `.beads/` | Beads task tracking |
-| `docs/`, `CONTRIBUTING.md` | Documentation workflows |
-| `terraform/`, `*.tf` | Infrastructure as code |
-
----
-
-## Filtering & Ranking
-
-### Exclusion Rules
-
-Non-negotiable — agent MUST apply these:
-
-| Rule | Action |
-|------|--------|
-| Skill mentions "bitbucket" and `git.platform` ≠ bitbucket | EXCLUDE |
-| Skill mentions "github" and `git.platform` ≠ github | EXCLUDE |
-| Skill mentions "gitlab" and `git.platform` ≠ gitlab | EXCLUDE |
-| Skill name contains `-dev` (internal development skills) | EXCLUDE |
-| Already installed (`aimgr list`) | EXCLUDE (mention as "already installed") |
-
-### Ranking
-
-- Platform-matching skills rank highest
-- Skills complementing already-installed ones rank higher
-- Generic skills (fix-documentation, observability-triage) are always candidates
+- Always query `aimgr repo list` — repository contents change, don't hardcode mappings.
+- Be conservative — only recommend with a clear signal match.
+- Present options, never auto-install.
 - Check for packages that bundle related resources: `aimgr repo describe package/*`
-
----
-
-## Notes for Agents
-
-- **Don't hardcode mappings.** Always query `aimgr repo list` — repository contents change.
-- **Be conservative.** Only recommend with a clear signal match.
-- **Respect user choice.** Present options, never auto-install.
-- **Match on descriptions.** Resource descriptions from `repo list --format=json` are the primary signal.
