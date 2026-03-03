@@ -121,6 +121,10 @@ Examples:
 			return fmt.Errorf("failed to list installed resources: %w", err)
 		}
 
+		// Inject package entries from the manifest (packages have no symlinks,
+		// so installer.List() never returns them — we add them manually here).
+		resources = appendManifestPackages(resources, projectPath)
+
 		// Filter by pattern if specified
 		if len(args) > 0 {
 			patternArg := args[0]
@@ -216,6 +220,50 @@ func expandManifestResources(projectPath string) map[string]bool {
 	return expanded
 }
 
+// appendManifestPackages reads ai.package.yaml and appends package/ entries as Resource objects
+// to the given slice. Packages have no symlinks, so installer.List() never finds them;
+// this function makes them visible to the rest of the list pipeline (pattern filtering,
+// buildResourceInfo, output formatters).
+//
+// Errors (no manifest, repo unavailable, package not found in repo) are silently skipped
+// so that missing configuration never breaks the overall list command.
+func appendManifestPackages(resources []resource.Resource, projectPath string) []resource.Resource {
+	manifestPath := filepath.Join(projectPath, manifest.ManifestFileName)
+	m, err := manifest.Load(manifestPath)
+	if err != nil {
+		return resources // No manifest — nothing to inject
+	}
+
+	// Try to get the repo manager so we can load package descriptions
+	manager, managerErr := NewManagerWithLogLevel()
+
+	for _, ref := range m.Resources {
+		if !strings.HasPrefix(ref, "package/") {
+			continue
+		}
+		packageName := strings.TrimPrefix(ref, "package/")
+
+		res := resource.Resource{
+			Type:   resource.PackageType,
+			Name:   packageName,
+			Health: resource.HealthOK,
+		}
+
+		// Load description (and resource list) from the repo if available
+		if managerErr == nil {
+			repoPath := manager.GetRepoPath()
+			pkgPath := resource.GetPackagePath(packageName, repoPath)
+			if pkg, loadErr := resource.LoadPackage(pkgPath); loadErr == nil {
+				res.Description = pkg.Description
+			}
+		}
+
+		resources = append(resources, res)
+	}
+
+	return resources
+}
+
 // getSyncStatus determines the sync status of a resource relative to ai.package.yaml.
 // expandedManifest is a pre-computed set of all resource refs (including package members).
 // Pass nil to indicate no manifest exists.
@@ -299,7 +347,12 @@ func buildResourceInfo(resources []resource.Resource, projectPath string, detect
 		}
 
 		// Determine if resource is installed (has at least one target)
+		// Packages have no symlinks, so their Targets will always be empty.
+		// They are considered "installed" by virtue of being in the manifest.
 		isInstalled := len(info.Targets) > 0
+		if res.Type == resource.PackageType {
+			isInstalled = true
+		}
 
 		// Build resource reference for manifest lookup
 		resourceRef := fmt.Sprintf("%s/%s", res.Type, res.Name)
@@ -354,6 +407,7 @@ func outputInstalledTable(infos []ResourceInfo, projectPath string) error {
 	commands := []ResourceInfo{}
 	skills := []ResourceInfo{}
 	agents := []ResourceInfo{}
+	packages := []ResourceInfo{}
 
 	for _, info := range infos {
 		switch info.Type {
@@ -363,6 +417,8 @@ func outputInstalledTable(infos []ResourceInfo, projectPath string) error {
 			skills = append(skills, info)
 		case resource.Agent:
 			agents = append(agents, info)
+		case resource.PackageType:
+			packages = append(packages, info)
 		}
 	}
 
@@ -419,6 +475,35 @@ func outputInstalledTable(infos []ResourceInfo, projectPath string) error {
 			status = statusIconFail
 		}
 		table.AddRow(resourceRef, targets, syncSymbol, status, agent.Description)
+	}
+
+	// Add separator before packages if any prior groups exist
+	if len(packages) > 0 && (len(commands) > 0 || len(skills) > 0 || len(agents) > 0) {
+		table.AddSeparator()
+	}
+
+	// Add packages — load repo manager once to resolve resource counts
+	var pkgManager interface{ GetRepoPath() string }
+	if m, err := NewManagerWithLogLevel(); err == nil {
+		pkgManager = m
+	}
+
+	for _, pkg := range packages {
+		resourceRef := fmt.Sprintf("package/%s", pkg.Name)
+		syncSymbol := formatSyncStatus(projectPath, resourceRef, true, expandedManifest)
+
+		// TARGETS column: show resource count from the package definition
+		targets := "-"
+		if pkgManager != nil {
+			repoPath := pkgManager.GetRepoPath()
+			pkgPath := resource.GetPackagePath(pkg.Name, repoPath)
+			if pkgDef, loadErr := resource.LoadPackage(pkgPath); loadErr == nil {
+				targets = fmt.Sprintf("%d resources", len(pkgDef.Resources))
+			}
+		}
+
+		// Packages always show ✓ for STATUS (no symlink health applies)
+		table.AddRow(resourceRef, targets, syncSymbol, statusIconOK, pkg.Description)
 	}
 
 	// Render the table
