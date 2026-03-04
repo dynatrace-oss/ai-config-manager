@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [3.0.0] - 2026-03-04
+
+### Breaking Changes
+- **Strict source format prefixes required** — `aimgr repo add` no longer infers GitHub from bare `owner/repo` or local paths from `./path`. All sources must use explicit format prefixes:
+  - `gh:owner/repo` — GitHub shorthand (with optional `@ref` and `/subpath`)
+  - `local:path` — Local directories
+  - `https://` / `http://` — Any Git host (GitHub, GitLab, Bitbucket, self-hosted)
+  - `git@host:owner/repo.git` — SSH URLs
+- **Module path migrated** — Go module path changed from `github.com/hk9890/ai-config-manager` to `github.com/dynatrace-oss/ai-config-manager`
+
+### Added
+- **`.git/` subpath delimiter** — Generic HTTPS URLs now support subpath extraction via `.git/` delimiter (e.g., `https://host/path/repo.git/subpath` splits into clone URL + subpath)
+- **Actionable error messages** — Invalid source formats now show exactly what format to use, with contextual suggestions based on the input pattern
+
+### Fixed
+- **E2E test binary build path** — E2E tests now build from `./cmd/aimgr/` after main.go relocation
+- **Binary name from `go install`** — Moved `main.go` to `cmd/aimgr/` so `go install` produces `aimgr` binary (not `ai-config-manager`)
+
+### Changed
+- **Help text rewritten** — `aimgr repo add --help` now shows complete format guide with all 4 source categories
+- **Error passthrough** — Parser errors are passed through directly without redundant wrapping
+- **Documentation updated** — All `aimgr repo add` examples across 15+ files updated to use explicit prefixes
+
+
 ## [2.10.0] - 2026-03-03
 
 ### Added
@@ -805,6 +829,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cross-platform support (Linux, macOS)
 - Configuration management with XDG base directory support
 
+[3.0.0]: https://github.com/dynatrace-oss/ai-config-manager/compare/v2.10.0...v3.0.0
 [1.4.0]: https://github.com/dynatrace-oss/ai-config-manager/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/dynatrace-oss/ai-config-manager/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/dynatrace-oss/ai-config-manager/compare/v1.1.0...v1.2.0

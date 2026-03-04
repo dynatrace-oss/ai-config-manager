@@ -63,7 +63,7 @@ func buildTestBinary(t *testing.T) string {
 		}
 
 		// Build the binary
-		cmd := exec.Command("go", "build", "-o", binPath, ".")
+		cmd := exec.Command("go", "build", "-o", binPath, "./cmd/aimgr/")
 		cmd.Dir = projectRoot
 		output, err := cmd.CombinedOutput()
 		if err != nil {
