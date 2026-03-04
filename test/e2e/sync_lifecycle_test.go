@@ -63,7 +63,7 @@ func TestSyncRemovesDeletedResources(t *testing.T) {
 
 	// Step 2: Add source
 	t.Log("Step 2: Adding source...")
-	stdout, stderr, err = runAimgrWithEnv(t, configPath, env, "repo", "add", sourceDir)
+	stdout, stderr, err = runAimgrWithEnv(t, configPath, env, "repo", "add", "local:"+sourceDir)
 	if err != nil {
 		t.Fatalf("repo add failed: %v\nStdout: %s\nStderr: %s", err, stdout, stderr)
 	}
@@ -180,14 +180,14 @@ func TestSyncDoesNotRemoveOnFailedSource(t *testing.T) {
 
 	// Step 2: Add source A
 	t.Log("Adding source A...")
-	stdout, stderr, err = runAimgrWithEnv(t, configPath, env, "repo", "add", sourceA, "--name", "sync-source-a")
+	stdout, stderr, err = runAimgrWithEnv(t, configPath, env, "repo", "add", "local:"+sourceA, "--name", "sync-source-a")
 	if err != nil {
 		t.Fatalf("repo add source A failed: %v\nStdout: %s\nStderr: %s", err, stdout, stderr)
 	}
 
 	// Step 3: Add source B
 	t.Log("Adding source B...")
-	stdout, stderr, err = runAimgrWithEnv(t, configPath, env, "repo", "add", sourceB, "--name", "sync-source-b")
+	stdout, stderr, err = runAimgrWithEnv(t, configPath, env, "repo", "add", "local:"+sourceB, "--name", "sync-source-b")
 	if err != nil {
 		t.Fatalf("repo add source B failed: %v\nStdout: %s\nStderr: %s", err, stdout, stderr)
 	}
@@ -283,7 +283,7 @@ func TestSyncAddUpdateRemoveCycle(t *testing.T) {
 		t.Fatalf("repo init failed: %v\nStdout: %s\nStderr: %s", err, stdout, stderr)
 	}
 
-	stdout, stderr, err = runAimgrWithEnv(t, configPath, env, "repo", "add", sourceDir)
+	stdout, stderr, err = runAimgrWithEnv(t, configPath, env, "repo", "add", "local:"+sourceDir)
 	if err != nil {
 		t.Fatalf("repo add failed: %v\nStdout: %s\nStderr: %s", err, stdout, stderr)
 	}

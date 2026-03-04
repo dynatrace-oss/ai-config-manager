@@ -34,7 +34,7 @@ This command:
 
 ```bash
 # Import resources - automatically creates commit
-aimgr repo add ~/my-resources/
+aimgr repo add local:~/my-resources/
 
 # Output:
 # Importing from: ~/my-resources
@@ -248,7 +248,7 @@ cd ~/.local/share/ai-config/repo
 git checkout -b experimental
 
 # Import experimental resources
-aimgr repo add ~/experimental-resources/
+aimgr repo add local:~/experimental-resources/
 
 # Switch back to main
 git checkout main
@@ -280,7 +280,7 @@ If the repository is not git-initialized, operations still work normally:
 
 ```bash
 # This works even without git init
-aimgr repo add ~/resources/
+aimgr repo add local:~/resources/
 
 # No git commits created, but resources are added
 ```
@@ -334,7 +334,7 @@ aimgr repo init
 ```bash
 # Initialize before importing resources
 aimgr repo init
-aimgr repo add ~/my-resources/
+aimgr repo add local:~/my-resources/
 ```
 
 ### 2. Use Descriptive Sync Sources

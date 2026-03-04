@@ -84,7 +84,7 @@ aimgr install $(aimgr repo list --format=json | jq -r '.resources[] | select(.sy
    ```
 3. Re-add your sources:
    ```bash
-   aimgr repo add ~/my-resources/
+   aimgr repo add local:~/my-resources/
    ```
 
 ---
@@ -97,7 +97,7 @@ aimgr install $(aimgr repo list --format=json | jq -r '.resources[] | select(.sy
 
 **Solution:** Use `--force` to overwrite:
 ```bash
-aimgr repo add ~/resource/ --force
+aimgr repo add local:~/resource/ --force
 aimgr install skill/foo --force
 ```
 

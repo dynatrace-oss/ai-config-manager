@@ -126,11 +126,11 @@ aimgr repo add gh:myorg/ai-resources
 
 # Import only packages using filters
 aimgr repo add gh:myorg/resources --filter "package/*"
-aimgr repo add ./my-resources/ --filter "package/*"
+aimgr repo add local:./my-resources/ --filter "package/*"
 
 # Import packages matching a pattern
 aimgr repo add gh:myorg/resources --filter "package/web-*"
-aimgr repo add ./resources/ --filter "package/*-tools"
+aimgr repo add local:./resources/ --filter "package/*-tools"
 ```
 
 **How Auto-Discovery Works:**
@@ -214,12 +214,12 @@ aimgr repo remove package/web-dev-tools --with-resources
 
 ```bash
 # 1. Add resources to repository (or use auto-import)
-aimgr repo add ~/my-resources/  # Auto-discovers all resources including packages
+aimgr repo add local:~/my-resources/  # Auto-discovers all resources including packages
 
 # Or add resources individually
-aimgr repo add ~/my-commands/build.md
-aimgr repo add ~/my-skills/typescript-helper
-aimgr repo add ~/my-agents/reviewer.md
+aimgr repo add local:~/my-commands/build.md
+aimgr repo add local:~/my-skills/typescript-helper
+aimgr repo add local:~/my-agents/reviewer.md
 
 # 2. Create package
 aimgr repo create-package my-tools \

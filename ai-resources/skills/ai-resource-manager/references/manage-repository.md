@@ -50,8 +50,8 @@ resources and tracks the source in `ai.repo.yaml` for future syncing.
 
 ```bash
 # Local directory (symlinked — live editing)
-aimgr repo add ~/my-skills
-aimgr repo add ./local-resources
+aimgr repo add local:~/my-skills
+aimgr repo add local:./local-resources
 
 # GitHub (copied — stable, versioned)
 aimgr repo add gh:owner/repo
@@ -59,12 +59,17 @@ aimgr repo add gh:owner/repo@v1.0.0       # Pinned version
 aimgr repo add https://github.com/owner/repo
 aimgr repo add git@github.com:owner/repo.git  # SSH
 
+# Any Git host (HTTPS or SSH)
+aimgr repo add https://bitbucket.org/org/repo
+aimgr repo add https://gitlab.com/group/project
+aimgr repo add git@bitbucket.org:org/repo.git
+
 # Options
 aimgr repo add gh:owner/repo --name=my-source  # Custom source name
 aimgr repo add gh:owner/repo --filter "skill/*" # Only import skills
-aimgr repo add ./resources --force              # Overwrite existing
-aimgr repo add ./resources --skip-existing      # Skip conflicts
-aimgr repo add ./resources --dry-run            # Preview only
+aimgr repo add local:./resources --force              # Overwrite existing
+aimgr repo add local:./resources --skip-existing      # Skip conflicts
+aimgr repo add local:./resources --dry-run            # Preview only
 ```
 
 ### Source Types
@@ -150,7 +155,7 @@ Validate that resources are compatible with aimgr before publishing.
 
 ```bash
 # Dry-run: validate without importing (read-only)
-aimgr repo add ./my-skill --dry-run
+aimgr repo add local:./my-skill --dry-run
 
 # Exit code: 0 = valid, 1 = failed
 ```
@@ -173,10 +178,10 @@ aimgr repo add ./my-skill --dry-run
 
 ```bash
 # 1. Validate format
-aimgr repo add ./my-skill --dry-run
+aimgr repo add local:./my-skill --dry-run
 
 # 2. Add to repository
-aimgr repo add ./my-skill
+aimgr repo add local:./my-skill
 
 # 3. Test installation
 cd /tmp/test-project
@@ -191,7 +196,7 @@ ls .claude/skills/my-skill/SKILL.md
 - name: Validate resources
   run: |
     go install github.com/dynatrace-oss/ai-config-manager/cmd/aimgr@latest
-    aimgr repo add . --dry-run --format=json
+    aimgr repo add local:. --dry-run --format=json
 ```
 
 ---
@@ -295,7 +300,7 @@ aimgr repo sync
 
 ```bash
 # Use --name to differentiate
-aimgr repo add ~/resources-v2 --name=my-source-v2
+aimgr repo add local:~/resources-v2 --name=my-source-v2
 ```
 
 📚 Run `aimgr repo --help` or `aimgr repo [command] --help` for full flag reference.

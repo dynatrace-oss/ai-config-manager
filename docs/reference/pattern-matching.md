@@ -142,7 +142,7 @@ aimgr uninstall skill/*helper
 aimgr repo add gh:owner/repo --filter "skill/*"
 
 # Add only packages
-aimgr repo add ~/resources/ --filter "package/*"
+aimgr repo add local:~/resources/ --filter "package/*"
 
 # Add resources matching pattern
 aimgr repo add gh:owner/repo --filter "web-*"
@@ -292,7 +292,7 @@ aimgr list package/* --format=json
 
 **Export specific resource types:**
 ```bash
-aimgr repo add ~/backup/ --filter "skill/*"
+aimgr repo add local:~/backup/ --filter "skill/*"
 ```
 
 **Clean up deprecated resources:**

@@ -28,12 +28,12 @@ func TestZeroArgInstall(t *testing.T) {
 	skillDir := createTestSkill(t, "test-skill", "Test skill for zero-arg install")
 
 	// Add resources to repository
-	_, err := runAimgr(t, "repo", "add", "--force", cmdPath)
+	_, err := runAimgr(t, "repo", "add", "--force", "local:"+cmdPath)
 	if err != nil {
 		t.Fatalf("Failed to add command: %v", err)
 	}
 
-	_, err = runAimgr(t, "repo", "add", "--force", skillDir)
+	_, err = runAimgr(t, "repo", "add", "--force", "local:"+skillDir)
 	if err != nil {
 		t.Fatalf("Failed to add skill: %v", err)
 	}
@@ -91,7 +91,7 @@ func TestSaveOnInstall(t *testing.T) {
 	cmdPath := createTestCommand(t, "save-test", "Test command for save functionality")
 
 	// Add to repository
-	_, err := runAimgr(t, "repo", "add", "--force", cmdPath)
+	_, err := runAimgr(t, "repo", "add", "--force", "local:"+cmdPath)
 	if err != nil {
 		t.Fatalf("Failed to add command: %v", err)
 	}
@@ -126,7 +126,7 @@ func TestSaveOnInstall(t *testing.T) {
 	// Install another resource using helper function
 	skillDir := createTestSkill(t, "save-skill", "Test skill for save functionality")
 
-	_, err = runAimgr(t, "repo", "add", "--force", skillDir)
+	_, err = runAimgr(t, "repo", "add", "--force", "local:"+skillDir)
 	if err != nil {
 		t.Fatalf("Failed to add skill: %v", err)
 	}
@@ -170,7 +170,7 @@ func TestNoSaveFlag(t *testing.T) {
 	cmdPath := createTestCommand(t, "no-save-test", "Test command for no-save flag")
 
 	// Add to repository
-	_, err := runAimgr(t, "repo", "add", "--force", cmdPath)
+	_, err := runAimgr(t, "repo", "add", "--force", "local:"+cmdPath)
 	if err != nil {
 		t.Fatalf("Failed to add command: %v", err)
 	}
@@ -221,11 +221,11 @@ func TestNoSaveFlagWithExistingManifest(t *testing.T) {
 	cmd2Path := createTestCommand(t, "new-cmd", "New command")
 
 	// Add to repository
-	_, err := runAimgr(t, "repo", "add", "--force", cmd1Path)
+	_, err := runAimgr(t, "repo", "add", "--force", "local:"+cmd1Path)
 	if err != nil {
 		t.Fatalf("Failed to add existing command: %v", err)
 	}
-	_, err = runAimgr(t, "repo", "add", "--force", cmd2Path)
+	_, err = runAimgr(t, "repo", "add", "--force", "local:"+cmd2Path)
 	if err != nil {
 		t.Fatalf("Failed to add new command: %v", err)
 	}
@@ -353,7 +353,7 @@ func TestMissingResources(t *testing.T) {
 	cmdPath := createTestCommand(t, "real-cmd", "Real command that exists")
 
 	// Add to repository
-	_, err := runAimgr(t, "repo", "add", "--force", cmdPath)
+	_, err := runAimgr(t, "repo", "add", "--force", "local:"+cmdPath)
 	if err != nil {
 		t.Fatalf("Failed to add command: %v", err)
 	}
@@ -407,7 +407,7 @@ func TestBackwardCompatibility(t *testing.T) {
 	cmdPath := createTestCommand(t, "compat-test", "Test command for backward compatibility")
 
 	// Add to repository
-	_, err := runAimgr(t, "repo", "add", "--force", cmdPath)
+	_, err := runAimgr(t, "repo", "add", "--force", "local:"+cmdPath)
 	if err != nil {
 		t.Fatalf("Failed to add command: %v", err)
 	}
@@ -526,7 +526,7 @@ func TestManifestWithTargets(t *testing.T) {
 	cmdPath := createTestCommand(t, "target-test", "Test command for target functionality")
 
 	// Add to repository
-	_, err := runAimgr(t, "repo", "add", "--force", cmdPath)
+	_, err := runAimgr(t, "repo", "add", "--force", "local:"+cmdPath)
 	if err != nil {
 		t.Fatalf("Failed to add command: %v", err)
 	}
@@ -579,11 +579,11 @@ func TestInstallFromManifestVsArgs(t *testing.T) {
 	cmd2Path := createTestCommand(t, "cmd2", "Command 2")
 
 	// Add to repository
-	_, err := runAimgr(t, "repo", "add", "--force", cmd1Path)
+	_, err := runAimgr(t, "repo", "add", "--force", "local:"+cmd1Path)
 	if err != nil {
 		t.Fatalf("Failed to add command 1: %v", err)
 	}
-	_, err = runAimgr(t, "repo", "add", "--force", cmd2Path)
+	_, err = runAimgr(t, "repo", "add", "--force", "local:"+cmd2Path)
 	if err != nil {
 		t.Fatalf("Failed to add command 2: %v", err)
 	}
@@ -662,7 +662,7 @@ func TestManifestPersistence(t *testing.T) {
 	resources := []string{"cmd1", "cmd2", "cmd3"}
 	for _, name := range resources {
 		cmdPath := createTestCommand(t, name, name)
-		_, err := runAimgr(t, "repo", "add", "--force", cmdPath)
+		_, err := runAimgr(t, "repo", "add", "--force", "local:"+cmdPath)
 		if err != nil {
 			t.Fatalf("Failed to add %s: %v", name, err)
 		}
@@ -738,7 +738,7 @@ func TestManifestErrorRecovery(t *testing.T) {
 	// Create test command using helper function
 	cmdPath := createTestCommand(t, "recovery-test", "Test command")
 
-	_, err := runAimgr(t, "repo", "add", "--force", cmdPath)
+	_, err := runAimgr(t, "repo", "add", "--force", "local:"+cmdPath)
 	if err != nil {
 		t.Fatalf("Failed to add command: %v", err)
 	}

@@ -127,7 +127,7 @@ $ aimgr repo list
 ### Example: Adding Resources
 
 ```bash
-$ aimgr repo add ~/my-resources/
+$ aimgr repo add local:~/my-resources/
 
 ┌─────────┬─────────────────────┬─────────┬──────────────────────┐
 │ TYPE    │ NAME                │ STATUS  │ MESSAGE              │
@@ -146,7 +146,7 @@ Summary: 5 added, 0 failed, 1 skipped (6 total)
 ### Example: With Errors
 
 ```bash
-$ aimgr repo add ~/broken-resources/
+$ aimgr repo add local:~/broken-resources/
 
 ┌─────────┬──────────────┬────────┬─────────────────────────────────────┐
 │ TYPE    │ NAME         │ STATUS │ MESSAGE                             │
@@ -260,7 +260,7 @@ The JSON format provides structured, machine-readable output perfect for scripti
 ### Example: Adding Resources
 
 ```bash
-$ aimgr repo add ~/my-resources/ --format=json
+$ aimgr repo add local:~/my-resources/ --format=json
 {
   "added": [
     {
@@ -390,7 +390,7 @@ package_count: 0
 ### Example: Adding Resources
 
 ```bash
-$ aimgr repo add ~/my-resources/ --format=yaml
+$ aimgr repo add local:~/my-resources/ --format=yaml
 added:
   - name: pdf-processing
     type: skill
@@ -649,7 +649,7 @@ All output formats include detailed error reporting to help diagnose issues.
 ### Table Format Errors
 
 ```bash
-$ aimgr repo add ~/resources/ --format=table
+$ aimgr repo add local:~/resources/ --format=table
 
 ┌─────────┬──────────────┬────────┬─────────────────────────────────────┐
 │ TYPE    │ NAME         │ STATUS │ MESSAGE                             │
@@ -758,7 +758,7 @@ skill/webapp-testing: claude
 
 **Extract only successful additions:**
 ```bash
-$ aimgr repo add ~/resources/ --format=json | jq '.added[].name'
+$ aimgr repo add local:~/resources/ --format=json | jq '.added[].name'
 "pdf-processing"
 "typescript-helper"
 "code-reviewer"
@@ -766,7 +766,7 @@ $ aimgr repo add ~/resources/ --format=json | jq '.added[].name'
 
 **Count resources by type:**
 ```bash
-$ aimgr repo add ~/resources/ --format=json | jq '{
+$ aimgr repo add local:~/resources/ --format=json | jq '{
   skills: .skill_count,
   commands: .command_count,
   agents: .agent_count,
@@ -782,7 +782,7 @@ $ aimgr repo add ~/resources/ --format=json | jq '{
 
 **Get error messages:**
 ```bash
-$ aimgr repo add ~/resources/ --format=json | jq '.failed[] | {
+$ aimgr repo add local:~/resources/ --format=json | jq '.failed[] | {
   name: .name,
   error: .message
 }'
@@ -794,11 +794,11 @@ $ aimgr repo add ~/resources/ --format=json | jq '.failed[] | {
 
 **Check if any operations failed:**
 ```bash
-$ aimgr repo add ~/resources/ --format=json | jq '.failed | length'
+$ aimgr repo add local:~/resources/ --format=json | jq '.failed | length'
 2
 
 # Use in scripts
-if [ $(aimgr repo add ~/resources/ --format=json | jq '.failed | length') -gt 0 ]; then
+if [ $(aimgr repo add local:~/resources/ --format=json | jq '.failed | length') -gt 0 ]; then
   echo "Import failed!"
   exit 1
 fi
@@ -806,7 +806,7 @@ fi
 
 **Filter by resource type:**
 ```bash
-$ aimgr repo add ~/resources/ --format=json | jq '.added[] | select(.type == "skill")'
+$ aimgr repo add local:~/resources/ --format=json | jq '.added[] | select(.type == "skill")'
 {
   "name": "pdf-processing",
   "type": "skill",
@@ -1144,7 +1144,7 @@ echo "$(date): Resource sync successful ($added added)" >> "$LOG_FILE"
 
 1. **Always check for failures** in scripts:
    ```bash
-   output=$(aimgr repo add ~/resources/ --format=json)
+   output=$(aimgr repo add local:~/resources/ --format=json)
    if [ $(echo "$output" | jq '.failed | length') -gt 0 ]; then
      echo "Import failed!"
      exit 1
@@ -1153,13 +1153,13 @@ echo "$(date): Resource sync successful ($added added)" >> "$LOG_FILE"
 
 2. **Log detailed errors** in automation:
    ```bash
-   aimgr repo add ~/resources/ --format=json | \
+   aimgr repo add local:~/resources/ --format=json | \
      jq '.failed[]' > error-log.json
    ```
 
 3. **Use descriptive error messages** for debugging:
    ```bash
-   aimgr repo add ~/resources/ --format=json | \
+   aimgr repo add local:~/resources/ --format=json | \
      jq -r '.failed[] | "\(.name): \(.message)"'
    ```
 

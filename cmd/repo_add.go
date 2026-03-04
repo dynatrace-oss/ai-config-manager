@@ -42,16 +42,31 @@ from the specified source location. It also automatically detects and adds marke
 files if present.
 
 Source Formats:
-  Local folders:
-    ./path or ~/path           Local directory (relative or home)
-    /absolute/path             Absolute local path
-  
-  GitHub repositories:
-    gh:owner/repo              GitHub repository (shorthand)
-    owner/repo                 GitHub shorthand (gh: inferred)
-    https://github.com/...     Full HTTPS Git URL
-    git@github.com:...         SSH Git URL
-    gh:owner/repo@branch       Specific branch or tag
+  GitHub (shorthand):
+    gh:owner/repo              GitHub repository
+    gh:owner/repo@v1.0.0       Specific branch or tag
+    gh:owner/repo/subpath       Subdirectory within repo
+    gh:owner/repo@ref/subpath   Ref and subdirectory combined
+
+  HTTPS / HTTP (any Git host):
+    https://github.com/owner/repo        GitHub
+    https://gitlab.com/owner/repo        GitLab
+    https://bitbucket.org/owner/repo     Bitbucket
+    http://git.internal.com/owner/repo   Self-hosted
+
+  HTTPS with subpath (via .git/ delimiter):
+    https://host/path/repo.git/subpath   Clone repo, use subpath
+    (Everything before .git/ is the clone URL; after is the subpath)
+
+  SSH (any Git host):
+    git@github.com:owner/repo.git        GitHub SSH
+    git@gitlab.com:owner/repo.git        GitLab SSH
+    git@bitbucket.org:owner/repo.git     Bitbucket SSH
+
+  Local directory:
+    local:./relative/path      Relative path (symlinked)
+    local:/absolute/path       Absolute path (symlinked)
+    local:~/home/path          Home-relative path (symlinked)
 
 Commands are single .md files with YAML frontmatter.
 Skills are directories containing a SKILL.md file.
@@ -60,39 +75,66 @@ Packages are .package.json files in the packages/ directory.
 Marketplace files (marketplace.json) are automatically discovered and converted to packages.
 
 Examples:
-  # Add all resources from local folder
-  aimgr repo add ~/.opencode/
-  aimgr repo add ~/project/.claude/
-  aimgr repo add ./my-resources/
-
-  # Add all resources from GitHub
-  aimgr repo add https://github.com/owner/repo
-  aimgr repo add git@github.com:owner/repo.git
+  # Add from GitHub (shorthand)
   aimgr repo add gh:owner/repo
-  aimgr repo add owner/repo
-  
-  # Add specific version
   aimgr repo add gh:owner/repo@v1.0.0
-  
-  # With options
-  aimgr repo add ~/resources/ --force
-  aimgr repo add gh:owner/repo --skip-existing
-  aimgr repo add ./test/ --dry-run
-  
-  # Filter resources (pattern matching)
   aimgr repo add gh:owner/repo --filter "skill/*"
-  aimgr repo add ./resources/ --filter "*test*"`,
+
+  # Add from any Git host (HTTPS)
+  aimgr repo add https://github.com/owner/repo
+  aimgr repo add https://bitbucket.org/org/repo
+  aimgr repo add https://gitlab.com/group/project
+
+  # HTTPS with subpath (non-GitHub hosts)
+  aimgr repo add https://bitbucket.example.com/scm/TEAM/repo.git/skills
+  aimgr repo add https://gitlab.internal.com/group/repo.git/packages/ai
+
+  # Add from any Git host (SSH)
+  aimgr repo add git@github.com:owner/repo.git
+  aimgr repo add git@bitbucket.org:org/repo.git
+
+  # Add from local directory
+  aimgr repo add local:~/.opencode/
+  aimgr repo add local:./my-resources/
+
+  # With options
+  aimgr repo add gh:owner/repo --force
+  aimgr repo add gh:owner/repo --skip-existing
+  aimgr repo add gh:owner/repo --dry-run
+  aimgr repo add gh:owner/repo --name=my-custom-name`,
 	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return nil, cobra.ShellCompDirectiveDefault
 	},
-	Args: cobra.ExactArgs(1),
+	Args: func(cmd *cobra.Command, args []string) error {
+		if len(args) == 0 {
+			return fmt.Errorf(`missing source argument
+
+Source formats:
+  gh:owner/repo                                GitHub shorthand
+  https://host/owner/repo                      HTTPS (any Git host)
+  https://host/path/repo.git/subpath           HTTPS with subpath
+  git@host:owner/repo.git                      SSH
+  local:./path                                 Local directory
+
+Examples:
+  aimgr repo add gh:my-org/ai-tools
+  aimgr repo add https://bitbucket.example.com/scm/TEAM/repo.git/skills
+  aimgr repo add local:./my-resources
+
+Run 'aimgr repo add --help' for full documentation`)
+		}
+		if len(args) > 1 {
+			return fmt.Errorf("accepts 1 arg, received %d", len(args))
+		}
+		return nil
+	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		sourceInput := args[0]
 
 		// Parse source
 		parsed, err := source.ParseSource(sourceInput)
 		if err != nil {
-			return fmt.Errorf("invalid source format: %w", err)
+			return err
 		}
 
 		// Create manager

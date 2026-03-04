@@ -42,17 +42,21 @@ var (
 	gitSSHRegex = regexp.MustCompile(`^git@`)
 )
 
-// ParseSource parses a source specification and returns a ParsedSource
-// Supported formats:
-//   - gh:owner/repo
-//   - gh:owner/repo/path/to/resource
-//   - gh:owner/repo@branch
-//   - gh:owner/repo@branch/path/to/resource
-//   - local:./path or local:/abs/path
-//   - http://... or https://...
-//   - git@github.com:owner/repo.git
-//   - owner/repo (inferred as GitHub)
-//   - ./path or /abs/path (inferred as local)
+// ParseSource parses a source specification and returns a ParsedSource.
+//
+// Supported formats (explicit prefix or scheme required):
+//   - gh:owner/repo                    GitHub shorthand
+//   - gh:owner/repo@ref                GitHub with branch/tag
+//   - gh:owner/repo/path               GitHub with subpath
+//   - gh:owner/repo@ref/path           GitHub with ref and subpath
+//   - local:./relative/path            Local directory (relative)
+//   - local:/absolute/path             Local directory (absolute)
+//   - https://host/owner/repo          HTTPS Git URL (any host)
+//   - http://host/owner/repo           HTTP Git URL (any host)
+//   - git@host:owner/repo.git          SSH Git URL (any host)
+//
+// No implicit formats are supported. Bare "owner/repo" or "./path" will return
+// an error with guidance on the correct format.
 func ParseSource(input string) (*ParsedSource, error) {
 	if input == "" {
 		return nil, fmt.Errorf("source cannot be empty")
@@ -79,18 +83,23 @@ func ParseSource(input string) (*ParsedSource, error) {
 		return parseGitSSH(input)
 	}
 
-	// Try to infer type from format
-	// Check if it looks like owner/repo pattern
+	// No implicit inference — provide helpful error messages
 	if githubOwnerRepoRegex.MatchString(input) {
-		return parseGitHubPrefix(input)
+		return nil, fmt.Errorf("ambiguous source %q — use \"gh:%s\" for GitHub or provide a full URL (e.g., https://bitbucket.org/%s)", input, input, input)
 	}
 
-	// Check if it looks like a local path
 	if strings.HasPrefix(input, "./") || strings.HasPrefix(input, "../") || filepath.IsAbs(input) {
-		return parseLocalPrefix(input)
+		return nil, fmt.Errorf("ambiguous source %q — use \"local:%s\" for local paths", input, input)
 	}
 
-	return nil, fmt.Errorf("unable to parse source format: %s", input)
+	return nil, fmt.Errorf(`unrecognized source format: %s
+
+Supported formats:
+  gh:owner/repo                  GitHub repository
+  local:./path or local:/path    Local directory
+  https://host/owner/repo        HTTPS Git URL (GitHub, GitLab, Bitbucket, etc.)
+  http://host/owner/repo         HTTP Git URL
+  git@host:owner/repo.git        SSH Git URL`, input)
 }
 
 // parseGitHubPrefix parses a GitHub source with gh: prefix removed
@@ -199,10 +208,19 @@ func parseHTTPURL(input string) (*ParsedSource, error) {
 		return parseGitLabURL(input)
 	}
 
-	// Generic git URL
+	// Generic git URL — extract subpath from .git/ delimiter if present
+	// e.g., https://host/scm/PROJECT/repo.git/subpath → clone URL + subpath
+	urlStr := parsedURL.String()
+	var subpath string
+	if idx := strings.Index(urlStr, ".git/"); idx != -1 {
+		subpath = urlStr[idx+5:] // everything after ".git/"
+		urlStr = urlStr[:idx+4]  // keep up to and including ".git"
+	}
+
 	return &ParsedSource{
-		Type: GitURL,
-		URL:  parsedURL.String(),
+		Type:    GitURL,
+		URL:     urlStr,
+		Subpath: subpath,
 	}, nil
 }
 

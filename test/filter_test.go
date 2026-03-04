@@ -28,7 +28,7 @@ func TestFilterSkills(t *testing.T) {
 	createTestAgentInDir(t, resourcesDir, "test-agent1", "Test agent 1")
 
 	// Test: Filter to import only skills
-	output, err := runAimgr(t, "repo", "add", resourcesDir, "--filter", "skill/*")
+	output, err := runAimgr(t, "repo", "add", "local:"+resourcesDir, "--filter", "skill/*")
 	if err != nil {
 		t.Fatalf("Failed to add with filter: %v\nOutput: %s", err, output)
 	}
@@ -80,7 +80,7 @@ func TestFilterPattern(t *testing.T) {
 	createTestCommandInDir(t, resourcesDir, "image-tool", "Image command")
 
 	// Test: Filter with pattern matching
-	output, err := runAimgr(t, "repo", "add", resourcesDir, "--filter", "pdf*")
+	output, err := runAimgr(t, "repo", "add", "local:"+resourcesDir, "--filter", "pdf*")
 	if err != nil {
 		t.Fatalf("Failed to add with filter: %v\nOutput: %s", err, output)
 	}
@@ -122,7 +122,7 @@ func TestFilterExactName(t *testing.T) {
 	createTestCommandInDir(t, resourcesDir, "other-cmd", "Another command")
 
 	// Test: Filter with exact name
-	output, err := runAimgr(t, "repo", "add", resourcesDir, "--filter", "exact-cmd")
+	output, err := runAimgr(t, "repo", "add", "local:"+resourcesDir, "--filter", "exact-cmd")
 	if err != nil {
 		t.Fatalf("Failed to add with filter: %v\nOutput: %s", err, output)
 	}
@@ -160,7 +160,7 @@ func TestFilterNoMatch(t *testing.T) {
 	createTestCommandInDir(t, resourcesDir, "test-cmd", "Test command")
 
 	// Test: Filter with no matches
-	output, err := runAimgr(t, "repo", "add", resourcesDir, "--filter", "nomatch*")
+	output, err := runAimgr(t, "repo", "add", "local:"+resourcesDir, "--filter", "nomatch*")
 	// Should not error, just show warning
 	if err != nil {
 		t.Fatalf("Should not error on no matches: %v\nOutput: %s", err, output)
@@ -191,7 +191,7 @@ func TestFilterWithDryRun(t *testing.T) {
 	createTestSkillInDir(t, resourcesDir, "test-skill", "Test skill")
 
 	// Test: Filter with dry-run
-	output, err := runAimgr(t, "repo", "add", resourcesDir, "--filter", "skill/*", "--dry-run")
+	output, err := runAimgr(t, "repo", "add", "local:"+resourcesDir, "--filter", "skill/*", "--dry-run")
 	if err != nil {
 		t.Fatalf("Failed dry-run with filter: %v\nOutput: %s", err, output)
 	}
@@ -229,7 +229,7 @@ func TestFilterWithForce(t *testing.T) {
 	initialDir := filepath.Join(testDir, "initial")
 	cmd1Path := createTestCommandInDir(t, initialDir, "update-me", "Original version")
 
-	_, err := runAimgr(t, "repo", "add", cmd1Path)
+	_, err := runAimgr(t, "repo", "add", "local:"+cmd1Path)
 	if err != nil {
 		t.Fatalf("Failed to add initial command: %v", err)
 	}
@@ -241,7 +241,7 @@ func TestFilterWithForce(t *testing.T) {
 	createTestCommandInDir(t, resourcesDir, "other-cmd", "Another command")
 
 	// Test: Filter with force to update only matching resource
-	output, err := runAimgr(t, "repo", "add", resourcesDir, "--filter", "update*", "--force")
+	output, err := runAimgr(t, "repo", "add", "local:"+resourcesDir, "--filter", "update*", "--force")
 	if err != nil {
 		t.Fatalf("Failed to add with filter and force: %v\nOutput: %s", err, output)
 	}
@@ -277,7 +277,7 @@ func TestFilterWithSkipExisting(t *testing.T) {
 	initialDir := filepath.Join(testDir, "initial")
 	cmd1Path := createTestCommandInDir(t, initialDir, "existing", "Existing command")
 
-	_, err := runAimgr(t, "repo", "add", cmd1Path)
+	_, err := runAimgr(t, "repo", "add", "local:"+cmd1Path)
 	if err != nil {
 		t.Fatalf("Failed to add initial command: %v", err)
 	}
@@ -289,7 +289,7 @@ func TestFilterWithSkipExisting(t *testing.T) {
 	createTestCommandInDir(t, resourcesDir, "new-cmd", "New command")
 
 	// Test: Filter with skip-existing
-	output, err := runAimgr(t, "repo", "add", resourcesDir, "--filter", "command/*", "--skip-existing")
+	output, err := runAimgr(t, "repo", "add", "local:"+resourcesDir, "--filter", "command/*", "--skip-existing")
 	if err != nil {
 		t.Fatalf("Failed to add with filter and skip-existing: %v\nOutput: %s", err, output)
 	}
@@ -318,7 +318,7 @@ func TestFilterWildcardAll(t *testing.T) {
 	createTestSkillInDir(t, resourcesDir, "skill1", "Skill 1")
 
 	// Test: Wildcard all
-	output, err := runAimgr(t, "repo", "add", resourcesDir, "--filter", "*")
+	output, err := runAimgr(t, "repo", "add", "local:"+resourcesDir, "--filter", "*")
 	if err != nil {
 		t.Fatalf("Failed to add with wildcard: %v\nOutput: %s", err, output)
 	}
@@ -344,7 +344,7 @@ func TestFilterTypeWithExactName(t *testing.T) {
 	createTestSkillInDir(t, resourcesDir, "test-util", "Test skill")
 
 	// Test: Filter by type and exact name
-	output, err := runAimgr(t, "repo", "add", resourcesDir, "--filter", "skill/test-util")
+	output, err := runAimgr(t, "repo", "add", "local:"+resourcesDir, "--filter", "skill/test-util")
 	if err != nil {
 		t.Fatalf("Failed to add with type filter: %v\nOutput: %s", err, output)
 	}
@@ -388,7 +388,7 @@ func TestFilterAgents(t *testing.T) {
 	createTestAgentInDir(t, resourcesDir, "test-agent", "Test agent")
 
 	// Test: Filter agents only
-	output, err := runAimgr(t, "repo", "add", resourcesDir, "--filter", "agent/*")
+	output, err := runAimgr(t, "repo", "add", "local:"+resourcesDir, "--filter", "agent/*")
 	if err != nil {
 		t.Fatalf("Failed to add agents: %v\nOutput: %s", err, output)
 	}

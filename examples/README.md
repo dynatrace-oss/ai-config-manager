@@ -220,7 +220,7 @@ Commands, skills, and agents must follow these naming rules:
 ### Validate a command:
 ```bash
 # Add to repository - validation happens automatically (type auto-detected)
-aimgr repo add ./my-command.md
+aimgr repo add local:./my-command.md
 ```
 
 ### Validate a skill:
@@ -232,7 +232,7 @@ cat my-skill/SKILL.md
 ls -d my-skill/
 
 # Add to repository - validation happens automatically (type auto-detected)
-aimgr repo add ./my-skill
+aimgr repo add local:./my-skill
 ```
 
 ## Using the Examples

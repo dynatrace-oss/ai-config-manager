@@ -91,7 +91,7 @@ func TestAddRemoveCycleCleanState(t *testing.T) {
 
 	// Step 2: Add the source
 	t.Log("Step 2: Adding source...")
-	stdout, stderr, err = runAimgrWithEnv(t, configPath, env, "repo", "add", sourceDir)
+	stdout, stderr, err = runAimgrWithEnv(t, configPath, env, "repo", "add", "local:"+sourceDir)
 	if err != nil {
 		t.Fatalf("repo add failed: %v\nStdout: %s\nStderr: %s", err, stdout, stderr)
 	}
@@ -235,7 +235,7 @@ func TestAddRemoveCycleKeepResources(t *testing.T) {
 		t.Fatalf("repo init failed: %v\nStdout: %s\nStderr: %s", err, stdout, stderr)
 	}
 
-	stdout, stderr, err = runAimgrWithEnv(t, configPath, env, "repo", "add", sourceDir)
+	stdout, stderr, err = runAimgrWithEnv(t, configPath, env, "repo", "add", "local:"+sourceDir)
 	if err != nil {
 		t.Fatalf("repo add failed: %v\nStdout: %s\nStderr: %s", err, stdout, stderr)
 	}
@@ -319,7 +319,7 @@ func TestAddDuplicateSourceDetection(t *testing.T) {
 		t.Fatalf("repo init failed: %v\nStdout: %s\nStderr: %s", err, stdout, stderr)
 	}
 
-	stdout, stderr, err = runAimgrWithEnv(t, configPath, env, "repo", "add", sourceDir)
+	stdout, stderr, err = runAimgrWithEnv(t, configPath, env, "repo", "add", "local:"+sourceDir)
 	if err != nil {
 		t.Fatalf("First add failed: %v\nStdout: %s\nStderr: %s", err, stdout, stderr)
 	}
@@ -327,7 +327,7 @@ func TestAddDuplicateSourceDetection(t *testing.T) {
 
 	// Try to add the same source again
 	t.Log("Adding same source a second time...")
-	stdout, stderr, err = runAimgrWithEnv(t, configPath, env, "repo", "add", sourceDir)
+	stdout, stderr, err = runAimgrWithEnv(t, configPath, env, "repo", "add", "local:"+sourceDir)
 	// The second add should either:
 	// (a) succeed with "already tracked" message (if it updates existing), or
 	// (b) fail with a duplicate source error

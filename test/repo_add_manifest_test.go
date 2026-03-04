@@ -45,7 +45,7 @@ func TestRepoAdd_ManifestCommitted(t *testing.T) {
 	createTestCommandInDir(t, resourceDir, "test-cmd", "Test command")
 
 	// Add resource
-	_, err = runAimgr(t, "repo", "add", resourceDir, "--name", "test-source")
+	_, err = runAimgr(t, "repo", "add", "local:"+resourceDir, "--name", "test-source")
 	if err != nil {
 		t.Fatalf("Failed to add resource: %v", err)
 	}
@@ -125,7 +125,7 @@ func TestRepoAdd_ManifestFailureHandling(t *testing.T) {
 
 	// Try to add resource - should show warning but not fail
 	t.Setenv("AIMGR_REPO_PATH", repoDir)
-	output, err := runAimgr(t, "repo", "add", resourceDir, "--name", "test-source")
+	output, err := runAimgr(t, "repo", "add", "local:"+resourceDir, "--name", "test-source")
 
 	// The command might fail due to read-only manifest, which is expected
 	if err == nil {

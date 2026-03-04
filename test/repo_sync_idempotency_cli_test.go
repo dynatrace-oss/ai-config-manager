@@ -101,7 +101,7 @@ func TestRepoSyncIdempotency_CLI(t *testing.T) {
 	t.Log("STEP 1: Adding source to repository...")
 	t.Log("========================================")
 
-	outputAdd, exitCodeAdd := runCommand("repo_add", "repo", "add", sourceDir)
+	outputAdd, exitCodeAdd := runCommand("repo_add", "repo", "add", "local:"+sourceDir)
 	if exitCodeAdd != 0 {
 		t.Fatalf("Failed to add source with exit code %d\nOutput: %s", exitCodeAdd, outputAdd)
 	}
@@ -245,7 +245,7 @@ func TestRepoSyncIdempotency_CLI_SkipExisting(t *testing.T) {
 	t.Log("STEP 1: Adding source to repository...")
 	t.Log("========================================")
 
-	outputAdd, exitCodeAdd := runCommand("repo_add", "repo", "add", sourceDir)
+	outputAdd, exitCodeAdd := runCommand("repo_add", "repo", "add", "local:"+sourceDir)
 	if exitCodeAdd != 0 {
 		t.Fatalf("Failed to add source with exit code %d\nOutput: %s", exitCodeAdd, outputAdd)
 	}

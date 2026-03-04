@@ -24,7 +24,7 @@ func TestOutputFormatTable(t *testing.T) {
 	createTestSkillInDir(t, resourcesDir, "output-test-skill", "A skill for testing table output")
 
 	// Run repo add with table format (default)
-	output, err := runAimgr(t, "repo", "add", resourcesDir)
+	output, err := runAimgr(t, "repo", "add", "local:"+resourcesDir)
 	if err != nil {
 		t.Fatalf("Failed to add resources: %v\nOutput: %s", err, output)
 	}
@@ -69,7 +69,7 @@ func TestOutputFormatJSON(t *testing.T) {
 	createTestSkillInDir(t, resourcesDir, "json-test-skill", "A skill for testing JSON output")
 
 	// Run repo add with JSON format
-	output, err := runAimgr(t, "repo", "add", "--format=json", resourcesDir)
+	output, err := runAimgr(t, "repo", "add", "--format=json", "local:"+resourcesDir)
 	if err != nil {
 		t.Fatalf("Failed to add resources: %v\nOutput: %s", err, output)
 	}
@@ -157,7 +157,7 @@ func TestOutputFormatYAML(t *testing.T) {
 	createTestSkillInDir(t, resourcesDir, "yaml-test-skill", "A skill for testing YAML output")
 
 	// Run repo add with YAML format
-	output, err := runAimgr(t, "repo", "add", "--format=yaml", resourcesDir)
+	output, err := runAimgr(t, "repo", "add", "--format=yaml", "local:"+resourcesDir)
 	if err != nil {
 		t.Fatalf("Failed to add resources: %v\nOutput: %s", err, output)
 	}
@@ -256,7 +256,7 @@ func TestOutputFormatMixedResults(t *testing.T) {
 	createTestSkillInDir(t, resourcesDir, "mixed-valid-skill", "A valid skill")
 
 	// First add: should succeed with 1 valid skill
-	output1, err := runAimgr(t, "repo", "add", "--skip-existing", "--format=json", resourcesDir)
+	output1, err := runAimgr(t, "repo", "add", "--skip-existing", "--format=json", "local:"+resourcesDir)
 	if err != nil {
 		t.Fatalf("Failed first add: %v\nOutput: %s", err, output1)
 	}
@@ -281,7 +281,7 @@ func TestOutputFormatMixedResults(t *testing.T) {
 	}
 
 	// Second add with skip-existing: should skip the valid one
-	output2, err := runAimgr(t, "repo", "add", "--skip-existing", "--format=json", resourcesDir)
+	output2, err := runAimgr(t, "repo", "add", "--skip-existing", "--format=json", "local:"+resourcesDir)
 	if err != nil {
 		t.Fatalf("Failed second add: %v\nOutput: %s", err, output2)
 	}
@@ -338,7 +338,7 @@ func TestOutputFormatDryRun(t *testing.T) {
 	createTestCommandInDir(t, resourcesDir, "dryrun-test", "A command for testing dry-run output")
 
 	// Run with dry-run and JSON format
-	output, err := runAimgr(t, "repo", "add", "--dry-run", "--format=json", resourcesDir)
+	output, err := runAimgr(t, "repo", "add", "--dry-run", "--format=json", "local:"+resourcesDir)
 	if err != nil {
 		t.Fatalf("Failed dry-run add: %v\nOutput: %s", err, output)
 	}
@@ -390,7 +390,7 @@ func TestOutputFormatErrorReporting(t *testing.T) {
 
 	t.Run("table format with errors", func(t *testing.T) {
 		// Run with table format (default) - should fail without skip-existing
-		_, err := runAimgr(t, "repo", "add", "--skip-existing", absFixtures)
+		_, err := runAimgr(t, "repo", "add", "--skip-existing", "local:"+absFixtures)
 		// Note: This will have discovery errors but won't fail the command
 		// The valid skill should still be added
 
@@ -409,7 +409,7 @@ func TestOutputFormatErrorReporting(t *testing.T) {
 		t.Setenv("XDG_DATA_HOME", xdgData2)
 
 		// Try to add resources with JSON format
-		output, err := runAimgr(t, "repo", "add", "--skip-existing", "--format=json", absFixtures)
+		output, err := runAimgr(t, "repo", "add", "--skip-existing", "--format=json", "local:"+absFixtures)
 		if err != nil {
 			t.Logf("Expected error with invalid resources: %v", err)
 		}
@@ -460,7 +460,7 @@ func TestOutputFormatBulkOperations(t *testing.T) {
 	createTestAgentInDir(t, resourcesDir, "bulk-agent1", "First test agent")
 
 	// Run bulk add with JSON format
-	output, err := runAimgr(t, "repo", "add", "--format=json", resourcesDir)
+	output, err := runAimgr(t, "repo", "add", "--format=json", "local:"+resourcesDir)
 	if err != nil {
 		t.Fatalf("Failed bulk add: %v\nOutput: %s", err, output)
 	}

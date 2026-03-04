@@ -1,7 +1,7 @@
 package source
 
 import (
-	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -354,11 +354,12 @@ func TestParseSource_GitLabURL(t *testing.T) {
 
 func TestParseSource_GenericGitURL(t *testing.T) {
 	tests := []struct {
-		name      string
-		input     string
-		wantType  SourceType
-		wantURL   string
-		wantError bool
+		name        string
+		input       string
+		wantType    SourceType
+		wantURL     string
+		wantSubpath string
+		wantError   bool
 	}{
 		{
 			name:      "generic HTTPS URL",
@@ -373,6 +374,38 @@ func TestParseSource_GenericGitURL(t *testing.T) {
 			wantType:  GitURL,
 			wantURL:   "http://example.com/repo.git",
 			wantError: false,
+		},
+		{
+			name:        "generic HTTPS URL with subpath via .git delimiter",
+			input:       "https://bitbucket.example.com/scm/PROJECT/repo.git/knowledge-base",
+			wantType:    GitURL,
+			wantURL:     "https://bitbucket.example.com/scm/PROJECT/repo.git",
+			wantSubpath: "knowledge-base",
+			wantError:   false,
+		},
+		{
+			name:        "generic HTTPS URL with deep subpath via .git delimiter",
+			input:       "https://git.internal.com/scm/TEAM/mono-repo.git/path/to/resources",
+			wantType:    GitURL,
+			wantURL:     "https://git.internal.com/scm/TEAM/mono-repo.git",
+			wantSubpath: "path/to/resources",
+			wantError:   false,
+		},
+		{
+			name:        "URL ending in .git has no subpath",
+			input:       "https://example.com/owner/repo.git",
+			wantType:    GitURL,
+			wantURL:     "https://example.com/owner/repo.git",
+			wantSubpath: "",
+			wantError:   false,
+		},
+		{
+			name:        "generic URL without .git has no subpath extraction",
+			input:       "https://example.com/owner/repo",
+			wantType:    GitURL,
+			wantURL:     "https://example.com/owner/repo",
+			wantSubpath: "",
+			wantError:   false,
 		},
 	}
 
@@ -395,70 +428,58 @@ func TestParseSource_GenericGitURL(t *testing.T) {
 			if got.URL != tt.wantURL {
 				t.Errorf("ParseSource(%q).URL = %v, want %v", tt.input, got.URL, tt.wantURL)
 			}
+			if got.Subpath != tt.wantSubpath {
+				t.Errorf("ParseSource(%q).Subpath = %v, want %v", tt.input, got.Subpath, tt.wantSubpath)
+			}
 		})
 	}
 }
 
-func TestParseSource_InferredTypes(t *testing.T) {
+func TestParseSource_InferredTypes_NowError(t *testing.T) {
 	tests := []struct {
-		name          string
-		input         string
-		wantType      SourceType
-		wantURL       string
-		wantLocalPath string
-		wantError     bool
+		name       string
+		input      string
+		wantError  bool
+		errContain string
 	}{
 		{
-			name:      "inferred GitHub owner/repo",
-			input:     "owner/repo",
-			wantType:  GitHub,
-			wantURL:   "https://github.com/owner/repo",
-			wantError: false,
+			name:       "bare owner/repo no longer inferred as GitHub",
+			input:      "owner/repo",
+			wantError:  true,
+			errContain: "gh:owner/repo",
 		},
 		{
-			name:          "inferred local relative path",
-			input:         "./path/to/skill",
-			wantType:      Local,
-			wantLocalPath: "path/to/skill",
-			wantError:     false,
+			name:       "relative path no longer inferred as local",
+			input:      "./path/to/skill",
+			wantError:  true,
+			errContain: "local:./path/to/skill",
 		},
 		{
-			name:          "inferred local parent path",
-			input:         "../path/to/skill",
-			wantType:      Local,
-			wantLocalPath: filepath.Clean("../path/to/skill"),
-			wantError:     false,
+			name:       "parent path no longer inferred as local",
+			input:      "../path/to/skill",
+			wantError:  true,
+			errContain: "local:../path/to/skill",
 		},
 		{
-			name:          "inferred local absolute path",
-			input:         "/abs/path/to/skill",
-			wantType:      Local,
-			wantLocalPath: "/abs/path/to/skill",
-			wantError:     false,
+			name:       "absolute path no longer inferred as local",
+			input:      "/abs/path/to/skill",
+			wantError:  true,
+			errContain: "local:/abs/path/to/skill",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := ParseSource(tt.input)
-			if tt.wantError {
-				if err == nil {
-					t.Errorf("ParseSource(%q) expected error, got nil", tt.input)
-				}
+			_, err := ParseSource(tt.input)
+			if !tt.wantError {
+				t.Fatal("all cases in this test should expect errors")
+			}
+			if err == nil {
+				t.Errorf("ParseSource(%q) expected error, got nil", tt.input)
 				return
 			}
-			if err != nil {
-				t.Errorf("ParseSource(%q) unexpected error: %v", tt.input, err)
-				return
-			}
-			if got.Type != tt.wantType {
-				t.Errorf("ParseSource(%q).Type = %v, want %v", tt.input, got.Type, tt.wantType)
-			}
-			if tt.wantType == GitHub && got.URL != tt.wantURL {
-				t.Errorf("ParseSource(%q).URL = %v, want %v", tt.input, got.URL, tt.wantURL)
-			}
-			if tt.wantType == Local && got.LocalPath != tt.wantLocalPath {
-				t.Errorf("ParseSource(%q).LocalPath = %v, want %v", tt.input, got.LocalPath, tt.wantLocalPath)
+			if tt.errContain != "" && !strings.Contains(err.Error(), tt.errContain) {
+				t.Errorf("ParseSource(%q) error = %q, want it to contain %q", tt.input, err.Error(), tt.errContain)
 			}
 		})
 	}
@@ -488,7 +509,7 @@ func TestParseSource_EdgeCases(t *testing.T) {
 		{
 			name:      "just a slash",
 			input:     "/",
-			wantError: false,
+			wantError: true,
 		},
 	}
 

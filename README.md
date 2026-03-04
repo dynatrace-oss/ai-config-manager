@@ -72,7 +72,7 @@ aimgr config set install.targets claude
 aimgr repo add gh:owner/repo
 
 # 3. Add resources from local directory
-aimgr repo add ~/.opencode/
+aimgr repo add local:~/.opencode/
 
 # 4. List available resources
 aimgr repo list

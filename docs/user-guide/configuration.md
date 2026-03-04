@@ -267,7 +267,7 @@ Override paths without modifying config file:
 ```bash
 # Run tests with temporary repository
 export AIMGR_REPO_PATH=/tmp/test-repo
-aimgr repo add ~/test-resources/
+aimgr repo add local:~/test-resources/
 aimgr install skill/test-skill
 
 # Original config unchanged
@@ -532,7 +532,7 @@ repo:
 ```bash
 # Test with temporary repository
 export AIMGR_REPO_PATH=/tmp/test-repo
-aimgr repo add ./test-resources/
+aimgr repo add local:./test-resources/
 aimgr install skill/test-skill
 
 # Original repository unchanged

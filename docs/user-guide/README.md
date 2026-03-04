@@ -57,7 +57,7 @@ aimgr repo init
 
 # Add sources
 aimgr repo add gh:example/ai-tools
-aimgr repo add ~/my-local-resources
+aimgr repo add local:~/my-local-resources
 
 # Install resources to your project
 cd ~/my-project

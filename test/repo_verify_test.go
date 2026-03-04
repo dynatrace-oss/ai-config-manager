@@ -36,7 +36,7 @@ func TestCLIRepoVerifyPackageWithMissingRefs(t *testing.T) {
 	// Create a valid command resource that we'll reference in the package
 	validCmdPath := createTestCommand(t, "valid-cmd", "Valid command")
 
-	_, err := runAimgr(t, "repo", "add", "--force", validCmdPath)
+	_, err := runAimgr(t, "repo", "add", "--force", "local:"+validCmdPath)
 	if err != nil {
 		t.Fatalf("Failed to add valid command: %v", err)
 	}
@@ -189,14 +189,14 @@ func TestCLIRepoVerifyHealthyPackage(t *testing.T) {
 	// Create resources
 	cmdPath := createTestCommand(t, "pkg-cmd", "Command for package")
 
-	_, err := runAimgr(t, "repo", "add", "--force", cmdPath)
+	_, err := runAimgr(t, "repo", "add", "--force", "local:"+cmdPath)
 	if err != nil {
 		t.Fatalf("Failed to add command: %v", err)
 	}
 
 	skillPath := createTestSkill(t, "pkg-skill", "Skill for package")
 
-	_, err = runAimgr(t, "repo", "add", "--force", skillPath)
+	_, err = runAimgr(t, "repo", "add", "--force", "local:"+skillPath)
 	if err != nil {
 		t.Fatalf("Failed to add skill: %v", err)
 	}
@@ -429,7 +429,7 @@ func TestCLIRepoVerifyOrphanedMetadata(t *testing.T) {
 	// Create and add a resource
 	cmdPath := createTestCommand(t, "orphan-test", "Will become orphaned")
 
-	_, err := runAimgr(t, "repo", "add", "--force", cmdPath)
+	_, err := runAimgr(t, "repo", "add", "--force", "local:"+cmdPath)
 	if err != nil {
 		t.Fatalf("Failed to add command: %v", err)
 	}
@@ -467,7 +467,7 @@ func TestCLIRepoVerifyMissingSourcePaths(t *testing.T) {
 	// Create and add a resource with local source
 	cmdPath := createTestCommand(t, "source-test", "Test missing source path")
 
-	_, err := runAimgr(t, "repo", "add", "--force", cmdPath)
+	_, err := runAimgr(t, "repo", "add", "--force", "local:"+cmdPath)
 	if err != nil {
 		t.Fatalf("Failed to add command: %v", err)
 	}
@@ -635,7 +635,7 @@ func TestCLIRepoVerifyFixOrphanedMetadata(t *testing.T) {
 	// Create and add a resource
 	cmdPath := createTestCommand(t, "fix-orphan", "Test --fix with orphaned metadata")
 
-	_, err := runAimgr(t, "repo", "add", "--force", cmdPath)
+	_, err := runAimgr(t, "repo", "add", "--force", "local:"+cmdPath)
 	if err != nil {
 		t.Fatalf("Failed to add command: %v", err)
 	}
@@ -698,7 +698,7 @@ description: Test JSON output
 	// Create orphaned metadata
 	orphanPath := createTestCommand(t, "orphan-json", "Test JSON output")
 
-	_, err := runAimgr(t, "repo", "add", "--force", orphanPath)
+	_, err := runAimgr(t, "repo", "add", "--force", "local:"+orphanPath)
 	if err != nil {
 		t.Fatalf("Failed to add orphan command: %v", err)
 	}
@@ -772,7 +772,7 @@ func TestCLIRepoVerifyHealthyRepo(t *testing.T) {
 	// Create and add a valid resource
 	cmdPath := createTestCommand(t, "healthy-cmd", "A healthy command")
 
-	_, err := runAimgr(t, "repo", "add", "--force", cmdPath)
+	_, err := runAimgr(t, "repo", "add", "--force", "local:"+cmdPath)
 	if err != nil {
 		t.Fatalf("Failed to add command: %v", err)
 	}
@@ -950,7 +950,7 @@ description: No metadata
 	// Issue 2: Orphaned metadata (skill)
 	orphanPath := createTestSkill(t, "orphan-skill", "Orphaned skill")
 
-	_, err := runAimgr(t, "repo", "add", "--force", orphanPath)
+	_, err := runAimgr(t, "repo", "add", "--force", "local:"+orphanPath)
 	if err != nil {
 		t.Fatalf("Failed to add orphan skill: %v", err)
 	}
@@ -1038,7 +1038,7 @@ Test nested command content.
 
 	// Import each command
 	for _, cmdPath := range commandPaths {
-		_, err := runAimgr(t, "repo", "add", "--force", cmdPath)
+		_, err := runAimgr(t, "repo", "add", "--force", "local:"+cmdPath)
 		if err != nil {
 			t.Fatalf("Failed to import command %s: %v", cmdPath, err)
 		}

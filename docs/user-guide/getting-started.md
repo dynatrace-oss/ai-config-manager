@@ -70,8 +70,8 @@ This creates the repository directory and `ai.repo.yaml` manifest.
 
 Add a local directory:
 ```bash
-aimgr repo add ~/.claude/           # Existing tool directory
-aimgr repo add ~/my-resources/      # Your own resources
+aimgr repo add local:~/.claude/           # Existing tool directory
+aimgr repo add local:~/my-resources/      # Your own resources
 ```
 
 Add from GitHub:
@@ -99,7 +99,7 @@ aimgr repo list skill        # List only skills
 
 ```bash
 # Add sources
-aimgr repo add ~/my-resources/          # Local (symlinked)
+aimgr repo add local:~/my-resources/          # Local (symlinked)
 aimgr repo add gh:owner/repo            # GitHub (copied)
 aimgr repo add gh:owner/repo@v1.0.0     # Specific version
 
@@ -185,13 +185,13 @@ aimgr repo remove command test-cmd --force  # Skip confirmation
 
 Preview operations before executing:
 ```bash
-aimgr repo add ~/resources/ --dry-run
+aimgr repo add local:~/resources/ --dry-run
 aimgr repo sync --dry-run
 ```
 
 Overwrite existing resources:
 ```bash
-aimgr repo add ~/resource/ --force
+aimgr repo add local:~/resource/ --force
 aimgr install skill/foo --force
 ```
 

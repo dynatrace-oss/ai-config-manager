@@ -16,7 +16,7 @@ func TestWorkspaceCacheWithLocalSource(t *testing.T) {
 	localSource := t.TempDir()
 
 	// Parse local source (should not create cache)
-	parsed, err := source.ParseSource(localSource)
+	parsed, err := source.ParseSource("local:" + localSource)
 	if err != nil {
 		t.Fatalf("Failed to parse local source: %v", err)
 	}

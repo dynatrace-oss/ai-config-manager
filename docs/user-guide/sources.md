@@ -4,6 +4,113 @@ This guide explains how to manage sources in your aimgr repository. Sources are 
 
 ---
 
+## Source Syntax
+
+Every source requires an **explicit prefix or scheme**. There is no implicit format guessing — this avoids ambiguity (e.g., `owner/repo` could be GitHub, Bitbucket, or GitLab).
+
+### Quick Reference
+
+| Format | Example | Type |
+|--------|---------|------|
+| `gh:owner/repo` | `gh:my-org/ai-tools` | GitHub |
+| `gh:owner/repo@ref` | `gh:my-org/ai-tools@v1.0.0` | GitHub (pinned) |
+| `gh:owner/repo@ref/path` | `gh:my-org/ai-tools@main/skills` | GitHub (subpath) |
+| `https://host/path` | `https://github.com/owner/repo` | HTTPS Git URL |
+| `https://host/repo.git/path` | `https://git.example.com/scm/proj/repo.git/skills` | HTTPS + subpath |
+| `http://host/path` | `http://git.internal.com/owner/repo` | HTTP Git URL |
+| `git@host:owner/repo.git` | `git@github.com:owner/repo.git` | SSH Git URL |
+| `local:path` | `local:./my-resources` | Local directory |
+
+### GitHub Shorthand (`gh:`)
+
+The `gh:` prefix is a convenience for GitHub repositories. It constructs the full `https://github.com/...` URL automatically.
+
+```bash
+gh:owner/repo                  # → https://github.com/owner/repo
+gh:owner/repo@v1.0.0           # Pinned to tag v1.0.0
+gh:owner/repo@main             # Pinned to branch main
+gh:owner/repo/skills/frontend  # Only resources under skills/frontend
+gh:owner/repo@v1.0.0/skills    # Pinned version + subpath
+```
+
+### HTTPS / HTTP URLs
+
+Use full URLs for **any Git host** — GitHub, GitLab, Bitbucket, self-hosted Gitea, etc.
+
+```bash
+https://github.com/owner/repo
+https://gitlab.com/group/project
+https://bitbucket.org/org/repo
+http://git.internal.company.com/team/resources
+```
+
+#### Subpath via `.git/` Delimiter
+
+For non-GitHub hosts that don't support `/tree/ref/path` syntax, you can specify a subpath by including `.git/` in the URL. Everything before `.git/` is the clone URL; everything after is the subpath within the repo.
+
+```bash
+# Clone https://git.example.com/scm/PROJ/repo.git, then look in skills/
+https://git.example.com/scm/PROJ/repo.git/skills
+
+# Bitbucket Server example — clone URL + subpath
+https://bitbucket.example.com/scm/TEAM/ai-resources.git/skills/frontend
+
+# Deep subpath
+https://gitlab.internal.com/group/mono-repo.git/packages/ai/skills
+```
+
+> **Note:** This only applies to generic HTTPS/HTTP URLs. For GitHub, prefer the `gh:owner/repo/subpath` shorthand or `/tree/ref/path` URL syntax instead.
+
+GitHub HTTPS URLs also support `/tree/ref` and `/tree/ref/path` syntax:
+
+```bash
+https://github.com/owner/repo/tree/v1.0.0
+https://github.com/owner/repo/tree/main/skills/frontend
+```
+
+### SSH URLs (`git@`)
+
+Use SSH URLs when your Git host is configured with SSH keys:
+
+```bash
+git@github.com:owner/repo.git
+git@gitlab.com:group/project.git
+git@bitbucket.org:org/repo.git
+```
+
+> **Note:** SSH URLs are converted to HTTPS internally for cloning. Ensure your system Git has proper credentials configured (e.g., via `gh auth login` or SSH agent).
+
+### Local Paths (`local:`)
+
+Use the `local:` prefix for directories on your filesystem:
+
+```bash
+local:./my-resources           # Relative to current directory
+local:../shared-resources      # Parent directory
+local:/home/user/my-skills     # Absolute path
+local:~/my-skills              # Home directory
+```
+
+Local sources are **symlinked** (not copied), so changes to the source files immediately reflect in the repository.
+
+### Common Mistakes
+
+```bash
+# WRONG — bare owner/repo is ambiguous
+aimgr repo add my-org/ai-tools
+# → Error: use "gh:my-org/ai-tools" for GitHub or provide a full URL
+
+# WRONG — bare path without local: prefix
+aimgr repo add ./my-resources
+# → Error: use "local:./my-resources" for local paths
+
+# CORRECT
+aimgr repo add gh:my-org/ai-tools
+aimgr repo add local:./my-resources
+```
+
+---
+
 ## Overview
 
 **aimgr** uses a **repository-local** approach to source management. Each repository tracks its own sources in an `ai.repo.yaml` manifest file, which is version-controlled and portable.
@@ -70,12 +177,12 @@ Local sources point to directories on your filesystem. Resources are automatical
 
 ```bash
 # Add from local directory
-aimgr repo add ~/my-skills
-aimgr repo add /opt/team-resources
-aimgr repo add ./local-resources
+aimgr repo add local:~/my-skills
+aimgr repo add local:/opt/team-resources
+aimgr repo add local:./local-resources
 
 # With custom name
-aimgr repo add ~/my-skills --name=personal-skills
+aimgr repo add local:~/my-skills --name=personal-skills
 ```
 
 ### How Symlink Mode Works
@@ -154,11 +261,14 @@ sources:
 
 ## GitHub-Specific Syntax
 
-GitHub sources support special syntax for specifying branches, tags, and subdirectories.
+GitHub sources support special syntax for specifying branches, tags, and subdirectories via the `gh:` shorthand or full HTTPS URLs.
 
 ### URL Formats
 
 ```bash
+# GitHub shorthand
+aimgr repo add gh:owner/repo
+
 # Standard GitHub URL
 aimgr repo add https://github.com/owner/repo
 
@@ -171,45 +281,57 @@ aimgr repo add git@github.com:owner/repo.git
 
 ### Specifying Refs (Branches/Tags)
 
-Use `#` to specify a branch, tag, or commit:
+Use `@ref` with the `gh:` shorthand:
 
 ```bash
 # Specific branch
-aimgr repo add https://github.com/owner/repo#develop
+aimgr repo add gh:owner/repo@develop
 
 # Specific tag (recommended for stability)
-aimgr repo add https://github.com/owner/repo#v1.2.0
+aimgr repo add gh:owner/repo@v1.2.0
+```
 
-# Specific commit
-aimgr repo add https://github.com/owner/repo#abc1234
+Or use `/tree/ref` with full GitHub URLs:
+
+```bash
+aimgr repo add https://github.com/owner/repo/tree/v1.2.0
+aimgr repo add https://github.com/owner/repo/tree/develop
 ```
 
 ### Specifying Subpaths
 
-Add a path after the repository name to target a specific directory:
+Add a subpath after the repository to target a specific directory:
 
 ```bash
-# Resources in a subdirectory
-aimgr repo add https://github.com/owner/repo/skills/frontend
+# Resources in a subdirectory (shorthand)
+aimgr repo add gh:owner/repo/skills/frontend
 
-# Subpath with ref
-aimgr repo add https://github.com/owner/repo/commands#v1.0.0
+# Subpath with ref (shorthand)
+aimgr repo add gh:owner/repo@v1.0.0/skills
+
+# Subpath via full URL
+aimgr repo add https://github.com/owner/repo/tree/main/skills/frontend
 ```
 
 ### Complete Examples
 
 ```bash
 # All resources from latest main branch
-aimgr repo add https://github.com/owner/repo
+aimgr repo add gh:owner/repo
 
 # Specific version
-aimgr repo add https://github.com/owner/repo#v2.0.0 --name=stable-tools
+aimgr repo add gh:owner/repo@v2.0.0 --name=stable-tools
 
 # Specific directory and version
-aimgr repo add https://github.com/owner/mono-repo/skills/frontend#v1.0.0
+aimgr repo add gh:owner/mono-repo@v1.0.0/skills/frontend
 
-# SSH with branch
-aimgr repo add git@github.com:owner/repo.git#develop
+# SSH with custom name
+aimgr repo add git@github.com:owner/repo.git --name=my-tools
+
+# Non-GitHub hosts
+aimgr repo add https://bitbucket.org/org/repo
+aimgr repo add https://gitlab.com/group/project
+aimgr repo add git@bitbucket.org:org/repo.git
 ```
 
 ### Auto-Discovery
@@ -231,17 +353,31 @@ When adding from GitHub, `aimgr` automatically discovers resources in standard l
 
 ### Authentication
 
-For private repositories:
+Authentication is handled by your system Git configuration. `aimgr` does not manage credentials.
+
+For **HTTPS** access to private repositories:
 
 ```bash
-# HTTPS with credentials (configure Git credential helper)
-git config --global credential.helper store
-aimgr repo add https://github.com/private/repo
+# Recommended: use GitHub CLI (configures credential helper)
+brew install gh  # or apt install gh
+gh auth login
 
-# SSH (requires configured SSH keys)
-ssh -T git@github.com  # Test authentication
-aimgr repo add git@github.com:private/repo.git
+# Alternative: configure Git credential helper directly
+git config --global credential.helper store
 ```
+
+For **SSH** access:
+
+```bash
+# Test SSH authentication
+ssh -T git@github.com
+ssh -T git@bitbucket.org
+
+# Then use SSH URLs
+aimgr repo add git@github.com:owner/private-repo.git
+```
+
+> **Note:** GitHub does not support password authentication for Git operations. Use a Personal Access Token or `gh auth login` instead.
 
 ### Workspace Caching
 
@@ -466,7 +602,7 @@ aimgr repo add gh:anthropics/skills --name=anthropic-skills
 aimgr repo add gh:mycompany/ai-resources --name=company-resources
 
 # Add local development resources
-aimgr repo add ~/dev/my-skills --name=dev-skills
+aimgr repo add local:~/dev/my-skills --name=dev-skills
 
 # Verify all sources
 aimgr repo info
@@ -503,7 +639,7 @@ git clone https://github.com/owner/repo ~/dev/upstream-repo
 aimgr repo drop-source upstream-repo
 
 # Add as local source (symlink mode)
-aimgr repo add ~/dev/upstream-repo --name=upstream-repo
+aimgr repo add local:~/dev/upstream-repo --name=upstream-repo
 
 # Now changes reflect immediately via symlinks
 ```
@@ -529,7 +665,7 @@ vim ~/.local/share/ai-config/repo/ai.repo.yaml
 
 # Option 2: Remove and re-add
 aimgr repo drop-source my-skills --keep-resources
-aimgr repo add /new/path/my-skills --name=my-skills --force
+aimgr repo add local:/new/path/my-skills --name=my-skills --force
 ```
 
 ### Remote Repository Unavailable
@@ -615,11 +751,11 @@ Error: source with name 'my-source' already exists
 
 ```bash
 # Use custom name
-aimgr repo add ~/new-resources --name=my-source-v2
+aimgr repo add local:~/new-resources --name=my-source-v2
 
 # Or remove old source first
 aimgr repo drop-source my-source
-aimgr repo add ~/new-resources
+aimgr repo add local:~/new-resources
 ```
 
 ### Corrupted ai.repo.yaml
@@ -679,7 +815,7 @@ aimgr repo add gh:owner/repo  # → "repo"
 
 ```bash
 # Stable - pinned to version
-aimgr repo add gh:owner/repo#v1.2.0
+aimgr repo add gh:owner/repo@v1.2.0
 
 # Risky - tracks latest (may break)
 aimgr repo add gh:owner/repo

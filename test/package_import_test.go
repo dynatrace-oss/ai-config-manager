@@ -572,7 +572,7 @@ func TestPackageAutoImportCLI(t *testing.T) {
 	}
 
 	// Run aimgr repo add on source directory
-	output, err := runAimgr(t, "repo", "add", sourceDir)
+	output, err := runAimgr(t, "repo", "add", "local:"+sourceDir)
 	if err != nil {
 		t.Fatalf("Failed to add resources: %v\nOutput: %s", err, output)
 	}

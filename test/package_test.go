@@ -576,7 +576,7 @@ func TestPackageCLI(t *testing.T) {
 	cmdPath := createTestCommand(t, "cli-test", "A command for CLI package testing")
 
 	// Add command to repo
-	_, err := runAimgr(t, "repo", "add", "--force", cmdPath)
+	_, err := runAimgr(t, "repo", "add", "--force", "local:"+cmdPath)
 	if err != nil {
 		t.Fatalf("Failed to add command: %v", err)
 	}
