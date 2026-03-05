@@ -4,6 +4,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/repomanifest"
 )
 
 // TestFilterSkills tests filtering to import only skills
@@ -412,5 +414,240 @@ func TestFilterAgents(t *testing.T) {
 	}
 	if strings.Contains(listOutput, "test-cmd") {
 		t.Errorf("Should NOT contain test-cmd, got: %s", listOutput)
+	}
+}
+
+// TestFilterMultipleFlags tests that multiple --filter flags are combined with OR logic
+func TestFilterMultipleFlags(t *testing.T) {
+	testDir := t.TempDir()
+	xdgData := filepath.Join(testDir, "xdg-data")
+	repoDir := filepath.Join(testDir, "repo")
+	t.Setenv("XDG_DATA_HOME", xdgData)
+	t.Setenv("AIMGR_REPO_PATH", repoDir)
+
+	// Create mixed resources
+	resourcesDir := filepath.Join(testDir, "resources")
+
+	createTestSkillInDir(t, resourcesDir, "test-util", "Test skill util")
+	createTestSkillInDir(t, resourcesDir, "other-skill", "Other skill")
+	createTestCommandInDir(t, resourcesDir, "test-cmd", "Test command")
+	createTestCommandInDir(t, resourcesDir, "other-cmd", "Other command")
+	createTestAgentInDir(t, resourcesDir, "some-agent", "Some agent")
+
+	// Test: import only skill/test-util AND command/*  (OR logic)
+	output, err := runAimgr(t, "repo", "add", "local:"+resourcesDir,
+		"--filter", "skill/test-util",
+		"--filter", "command/*")
+	if err != nil {
+		t.Fatalf("Failed to add with multiple filters: %v\nOutput: %s", err, output)
+	}
+
+	// Should add 1 skill + 2 commands = 3
+	if !strings.Contains(output, "Summary: 3 added") {
+		t.Errorf("Should add 3 resources (1 skill + 2 commands), got: %s", output)
+	}
+
+	// Verify correct resources are in repository
+	listOutput, err := runAimgr(t, "repo", "list")
+	if err != nil {
+		t.Fatalf("Failed to list resources: %v", err)
+	}
+
+	if !strings.Contains(listOutput, "test-util") {
+		t.Errorf("Should contain test-util skill, got: %s", listOutput)
+	}
+	if !strings.Contains(listOutput, "test-cmd") {
+		t.Errorf("Should contain test-cmd, got: %s", listOutput)
+	}
+	if !strings.Contains(listOutput, "other-cmd") {
+		t.Errorf("Should contain other-cmd, got: %s", listOutput)
+	}
+	if strings.Contains(listOutput, "other-skill") {
+		t.Errorf("Should NOT contain other-skill, got: %s", listOutput)
+	}
+	if strings.Contains(listOutput, "some-agent") {
+		t.Errorf("Should NOT contain some-agent, got: %s", listOutput)
+	}
+}
+
+// TestFilterPersistsToManifest verifies that --filter values are written to ai.repo.yaml source.include
+func TestFilterPersistsToManifest(t *testing.T) {
+	testDir := t.TempDir()
+	xdgData := filepath.Join(testDir, "xdg-data")
+	repoDir := filepath.Join(testDir, "repo")
+	t.Setenv("XDG_DATA_HOME", xdgData)
+	t.Setenv("AIMGR_REPO_PATH", repoDir)
+
+	resourcesDir := filepath.Join(testDir, "resources")
+	createTestSkillInDir(t, resourcesDir, "pdf-skill", "PDF skill")
+	createTestSkillInDir(t, resourcesDir, "docx-skill", "Docx skill")
+	createTestCommandInDir(t, resourcesDir, "test-cmd", "Test command")
+
+	// Add with two filters
+	_, err := runAimgr(t, "repo", "add", "local:"+resourcesDir,
+		"--filter", "skill/pdf-skill",
+		"--filter", "skill/docx-skill",
+		"--name", "test-source")
+	if err != nil {
+		t.Fatalf("Failed to add with filters: %v", err)
+	}
+
+	// Load manifest and verify include field
+	manifest, err := repomanifest.Load(repoDir)
+	if err != nil {
+		t.Fatalf("Failed to load manifest: %v", err)
+	}
+
+	src, found := manifest.GetSource("test-source")
+	if !found {
+		t.Fatalf("Source 'test-source' not found in manifest")
+	}
+
+	if len(src.Include) != 2 {
+		t.Fatalf("Expected 2 include entries, got %d: %v", len(src.Include), src.Include)
+	}
+
+	includeSet := make(map[string]bool)
+	for _, inc := range src.Include {
+		includeSet[inc] = true
+	}
+	if !includeSet["skill/pdf-skill"] {
+		t.Errorf("Include should contain 'skill/pdf-skill', got: %v", src.Include)
+	}
+	if !includeSet["skill/docx-skill"] {
+		t.Errorf("Include should contain 'skill/docx-skill', got: %v", src.Include)
+	}
+}
+
+// TestFilterNoFilterClearsInclude verifies that adding without --filter writes no include field
+func TestFilterNoFilterClearsInclude(t *testing.T) {
+	testDir := t.TempDir()
+	xdgData := filepath.Join(testDir, "xdg-data")
+	repoDir := filepath.Join(testDir, "repo")
+	t.Setenv("XDG_DATA_HOME", xdgData)
+	t.Setenv("AIMGR_REPO_PATH", repoDir)
+
+	resourcesDir := filepath.Join(testDir, "resources")
+	createTestCommandInDir(t, resourcesDir, "test-cmd", "Test command")
+
+	// Add without any filter
+	_, err := runAimgr(t, "repo", "add", "local:"+resourcesDir, "--name", "no-filter-source")
+	if err != nil {
+		t.Fatalf("Failed to add without filter: %v", err)
+	}
+
+	// Load manifest and verify no include field
+	manifest, err := repomanifest.Load(repoDir)
+	if err != nil {
+		t.Fatalf("Failed to load manifest: %v", err)
+	}
+
+	src, found := manifest.GetSource("no-filter-source")
+	if !found {
+		t.Fatalf("Source 'no-filter-source' not found in manifest")
+	}
+
+	if len(src.Include) != 0 {
+		t.Errorf("Include should be empty when no --filter given, got: %v", src.Include)
+	}
+}
+
+// TestFilterReAddReplacesInclude verifies REPLACE semantics: re-adding with different --filter replaces include
+func TestFilterReAddReplacesInclude(t *testing.T) {
+	testDir := t.TempDir()
+	xdgData := filepath.Join(testDir, "xdg-data")
+	repoDir := filepath.Join(testDir, "repo")
+	t.Setenv("XDG_DATA_HOME", xdgData)
+	t.Setenv("AIMGR_REPO_PATH", repoDir)
+
+	resourcesDir := filepath.Join(testDir, "resources")
+	createTestSkillInDir(t, resourcesDir, "pdf-skill", "PDF skill")
+	createTestSkillInDir(t, resourcesDir, "docx-skill", "Docx skill")
+
+	// First add with one filter
+	_, err := runAimgr(t, "repo", "add", "local:"+resourcesDir,
+		"--filter", "skill/pdf-skill",
+		"--name", "my-source")
+	if err != nil {
+		t.Fatalf("Failed initial add: %v", err)
+	}
+
+	manifest, err := repomanifest.Load(repoDir)
+	if err != nil {
+		t.Fatalf("Failed to load manifest after first add: %v", err)
+	}
+	src, _ := manifest.GetSource("my-source")
+	if len(src.Include) != 1 || src.Include[0] != "skill/pdf-skill" {
+		t.Fatalf("Expected include=[skill/pdf-skill] after first add, got: %v", src.Include)
+	}
+
+	// Re-add the same source with a different filter — should REPLACE include
+	_, err = runAimgr(t, "repo", "add", "local:"+resourcesDir,
+		"--filter", "skill/docx-skill",
+		"--name", "my-source",
+		"--force")
+	if err != nil {
+		t.Fatalf("Failed re-add: %v", err)
+	}
+
+	manifest, err = repomanifest.Load(repoDir)
+	if err != nil {
+		t.Fatalf("Failed to load manifest after re-add: %v", err)
+	}
+	src, found := manifest.GetSource("my-source")
+	if !found {
+		t.Fatalf("Source 'my-source' not found in manifest after re-add")
+	}
+	if len(src.Include) != 1 || src.Include[0] != "skill/docx-skill" {
+		t.Errorf("Expected include=[skill/docx-skill] after re-add, got: %v", src.Include)
+	}
+}
+
+// TestFilterReAddWithoutFilterClearsInclude verifies REPLACE semantics: re-adding without --filter clears include
+func TestFilterReAddWithoutFilterClearsInclude(t *testing.T) {
+	testDir := t.TempDir()
+	xdgData := filepath.Join(testDir, "xdg-data")
+	repoDir := filepath.Join(testDir, "repo")
+	t.Setenv("XDG_DATA_HOME", xdgData)
+	t.Setenv("AIMGR_REPO_PATH", repoDir)
+
+	resourcesDir := filepath.Join(testDir, "resources")
+	createTestSkillInDir(t, resourcesDir, "pdf-skill", "PDF skill")
+
+	// First add with a filter
+	_, err := runAimgr(t, "repo", "add", "local:"+resourcesDir,
+		"--filter", "skill/pdf-skill",
+		"--name", "my-source")
+	if err != nil {
+		t.Fatalf("Failed initial add: %v", err)
+	}
+
+	manifest, err := repomanifest.Load(repoDir)
+	if err != nil {
+		t.Fatalf("Failed to load manifest after first add: %v", err)
+	}
+	src, _ := manifest.GetSource("my-source")
+	if len(src.Include) == 0 {
+		t.Fatalf("Expected non-empty include after first add with filter")
+	}
+
+	// Re-add without filter — include should be cleared
+	_, err = runAimgr(t, "repo", "add", "local:"+resourcesDir,
+		"--name", "my-source",
+		"--force")
+	if err != nil {
+		t.Fatalf("Failed re-add without filter: %v", err)
+	}
+
+	manifest, err = repomanifest.Load(repoDir)
+	if err != nil {
+		t.Fatalf("Failed to load manifest after re-add: %v", err)
+	}
+	src, found := manifest.GetSource("my-source")
+	if !found {
+		t.Fatalf("Source 'my-source' not found in manifest after re-add")
+	}
+	if len(src.Include) != 0 {
+		t.Errorf("Include should be cleared after re-add without --filter, got: %v", src.Include)
 	}
 }

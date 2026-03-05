@@ -739,3 +739,336 @@ func TestMatcher_ComplexPatterns(t *testing.T) {
 		})
 	}
 }
+
+func TestNewMultiMatcher(t *testing.T) {
+	tests := []struct {
+		name      string
+		patterns  []string
+		wantError bool
+	}{
+		{
+			name:      "empty patterns - no error",
+			patterns:  []string{},
+			wantError: false,
+		},
+		{
+			name:      "nil patterns - no error",
+			patterns:  nil,
+			wantError: false,
+		},
+		{
+			name:      "single valid pattern",
+			patterns:  []string{"skill/pdf*"},
+			wantError: false,
+		},
+		{
+			name:      "multiple valid patterns",
+			patterns:  []string{"skill/pdf*", "command/build", "agent/*reviewer"},
+			wantError: false,
+		},
+		{
+			name:      "invalid pattern returns error",
+			patterns:  []string{"skill/[invalid"},
+			wantError: true,
+		},
+		{
+			name:      "first valid, second invalid returns error",
+			patterns:  []string{"skill/pdf*", "command/[bad"},
+			wantError: true,
+		},
+		{
+			name:      "empty string pattern returns error",
+			patterns:  []string{""},
+			wantError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mm, err := NewMultiMatcher(tt.patterns)
+			if tt.wantError {
+				if err == nil {
+					t.Errorf("NewMultiMatcher(%v) expected error, got nil", tt.patterns)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("NewMultiMatcher(%v) unexpected error: %v", tt.patterns, err)
+				}
+				if mm == nil {
+					t.Errorf("NewMultiMatcher(%v) returned nil", tt.patterns)
+				}
+			}
+		})
+	}
+}
+
+func TestMultiMatcher_IsEmpty(t *testing.T) {
+	tests := []struct {
+		name     string
+		patterns []string
+		want     bool
+	}{
+		{
+			name:     "empty slice is empty",
+			patterns: []string{},
+			want:     true,
+		},
+		{
+			name:     "nil is empty",
+			patterns: nil,
+			want:     true,
+		},
+		{
+			name:     "one pattern is not empty",
+			patterns: []string{"skill/*"},
+			want:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mm, err := NewMultiMatcher(tt.patterns)
+			if err != nil {
+				t.Fatalf("NewMultiMatcher(%v) error: %v", tt.patterns, err)
+			}
+			got := mm.IsEmpty()
+			if got != tt.want {
+				t.Errorf("MultiMatcher.IsEmpty() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestMultiMatcher_Match(t *testing.T) {
+	tests := []struct {
+		name     string
+		patterns []string
+		resource *resource.Resource
+		want     bool
+	}{
+		{
+			name:     "empty patterns matches everything",
+			patterns: []string{},
+			resource: &resource.Resource{Name: "any-skill", Type: resource.Skill},
+			want:     true,
+		},
+		{
+			name:     "single pattern - match",
+			patterns: []string{"skill/pdf*"},
+			resource: &resource.Resource{Name: "pdf-processing", Type: resource.Skill},
+			want:     true,
+		},
+		{
+			name:     "single pattern - no match",
+			patterns: []string{"skill/pdf*"},
+			resource: &resource.Resource{Name: "image-processing", Type: resource.Skill},
+			want:     false,
+		},
+		{
+			name:     "OR logic - matches first pattern",
+			patterns: []string{"skill/pdf*", "command/build"},
+			resource: &resource.Resource{Name: "pdf-processing", Type: resource.Skill},
+			want:     true,
+		},
+		{
+			name:     "OR logic - matches second pattern",
+			patterns: []string{"skill/pdf*", "command/build"},
+			resource: &resource.Resource{Name: "build", Type: resource.Command},
+			want:     true,
+		},
+		{
+			name:     "OR logic - matches neither",
+			patterns: []string{"skill/pdf*", "command/build"},
+			resource: &resource.Resource{Name: "image-processing", Type: resource.Skill},
+			want:     false,
+		},
+		{
+			name:     "type filter respected",
+			patterns: []string{"skill/pdf*"},
+			resource: &resource.Resource{Name: "pdf-processing", Type: resource.Command},
+			want:     false,
+		},
+		{
+			name:     "wildcard all",
+			patterns: []string{"*"},
+			resource: &resource.Resource{Name: "anything", Type: resource.Agent},
+			want:     true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mm, err := NewMultiMatcher(tt.patterns)
+			if err != nil {
+				t.Fatalf("NewMultiMatcher(%v) error: %v", tt.patterns, err)
+			}
+
+			got := mm.Match(tt.resource)
+			if got != tt.want {
+				t.Errorf("MultiMatcher.Match(%q) = %v, want %v", tt.resource.Name, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestMultiMatcher_MatchName(t *testing.T) {
+	tests := []struct {
+		name     string
+		patterns []string
+		input    string
+		want     bool
+	}{
+		{
+			name:     "empty patterns matches everything",
+			patterns: []string{},
+			input:    "any-name",
+			want:     true,
+		},
+		{
+			name:     "single pattern match",
+			patterns: []string{"pdf*"},
+			input:    "pdf-processing",
+			want:     true,
+		},
+		{
+			name:     "single pattern no match",
+			patterns: []string{"pdf*"},
+			input:    "image-processing",
+			want:     false,
+		},
+		{
+			name:     "OR logic - first matches",
+			patterns: []string{"pdf*", "image*"},
+			input:    "pdf-tool",
+			want:     true,
+		},
+		{
+			name:     "OR logic - second matches",
+			patterns: []string{"pdf*", "image*"},
+			input:    "image-tool",
+			want:     true,
+		},
+		{
+			name:     "OR logic - neither matches",
+			patterns: []string{"pdf*", "image*"},
+			input:    "video-tool",
+			want:     false,
+		},
+		{
+			name:     "type prefix ignored in MatchName",
+			patterns: []string{"skill/pdf*"},
+			input:    "pdf-processing",
+			want:     true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mm, err := NewMultiMatcher(tt.patterns)
+			if err != nil {
+				t.Fatalf("NewMultiMatcher(%v) error: %v", tt.patterns, err)
+			}
+
+			got := mm.MatchName(tt.input)
+			if got != tt.want {
+				t.Errorf("MultiMatcher.MatchName(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestFilterResourcesMulti(t *testing.T) {
+	resources := []*resource.Resource{
+		{Name: "pdf-processing", Type: resource.Skill},
+		{Name: "image-processing", Type: resource.Skill},
+		{Name: "build-project", Type: resource.Command},
+		{Name: "test-runner", Type: resource.Command},
+		{Name: "code-reviewer", Type: resource.Agent},
+	}
+
+	tests := []struct {
+		name      string
+		patterns  []string
+		wantCount int
+		wantNames []string
+		wantError bool
+	}{
+		{
+			name:      "empty patterns returns all resources",
+			patterns:  []string{},
+			wantCount: 5,
+			wantNames: []string{"pdf-processing", "image-processing", "build-project", "test-runner", "code-reviewer"},
+			wantError: false,
+		},
+		{
+			name:      "single pattern filters correctly",
+			patterns:  []string{"skill/*processing"},
+			wantCount: 2,
+			wantNames: []string{"pdf-processing", "image-processing"},
+			wantError: false,
+		},
+		{
+			name:      "OR logic returns union of matches",
+			patterns:  []string{"skill/pdf*", "command/build*"},
+			wantCount: 2,
+			wantNames: []string{"pdf-processing", "build-project"},
+			wantError: false,
+		},
+		{
+			name:      "no matches returns empty slice",
+			patterns:  []string{"skill/nonexistent*"},
+			wantCount: 0,
+			wantNames: []string{},
+			wantError: false,
+		},
+		{
+			name:      "wildcard all returns all",
+			patterns:  []string{"*"},
+			wantCount: 5,
+			wantNames: []string{"pdf-processing", "image-processing", "build-project", "test-runner", "code-reviewer"},
+			wantError: false,
+		},
+		{
+			name:      "invalid pattern returns error",
+			patterns:  []string{"skill/[invalid"},
+			wantCount: 0,
+			wantError: true,
+		},
+		{
+			name:      "multiple OR patterns - three types",
+			patterns:  []string{"skill/pdf*", "command/test*", "agent/*"},
+			wantCount: 3,
+			wantNames: []string{"pdf-processing", "test-runner", "code-reviewer"},
+			wantError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := FilterResourcesMulti(resources, tt.patterns)
+			if tt.wantError {
+				if err == nil {
+					t.Errorf("FilterResourcesMulti(%v) expected error, got nil", tt.patterns)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("FilterResourcesMulti(%v) unexpected error: %v", tt.patterns, err)
+			}
+
+			if len(got) != tt.wantCount {
+				t.Errorf("FilterResourcesMulti(%v) returned %d resources, want %d", tt.patterns, len(got), tt.wantCount)
+			}
+
+			gotNames := make(map[string]bool)
+			for _, res := range got {
+				gotNames[res.Name] = true
+			}
+			for _, wantName := range tt.wantNames {
+				if !gotNames[wantName] {
+					t.Errorf("FilterResourcesMulti(%v) missing expected resource %q", tt.patterns, wantName)
+				}
+			}
+		})
+	}
+}

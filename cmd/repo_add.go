@@ -26,7 +26,7 @@ var forceFlag bool
 var (
 	skipExistingFlag bool
 	dryRunFlag       bool
-	filterFlag       string
+	filterFlags      []string
 	addFormatFlag    string
 	nameFlag         string
 )
@@ -101,7 +101,16 @@ Examples:
   aimgr repo add gh:owner/repo --force
   aimgr repo add gh:owner/repo --skip-existing
   aimgr repo add gh:owner/repo --dry-run
-  aimgr repo add gh:owner/repo --name=my-custom-name`,
+  aimgr repo add gh:owner/repo --name=my-custom-name
+
+  # Filter resources to import (repeatable, OR logic):
+  aimgr repo add gh:owner/repo --filter skill/pdf --filter skill/docx
+  aimgr repo add gh:owner/repo --filter 'skill/*'
+  aimgr repo add local:./my-resources --filter skill/test-util --filter 'command/*'
+
+  Filters are persisted in ai.repo.yaml (source.include) and respected by repo sync.
+  Multiple --filter flags may be specified; a resource is imported if ANY pattern matches.
+  Re-adding an existing source with --filter replaces its include list; without --filter clears it.`,
 	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return nil, cobra.ShellCompDirectiveDefault
 	},
@@ -165,7 +174,7 @@ Run 'aimgr repo add --help' for full documentation`)
 			tempSource := repomanifest.Source{Path: absPath}
 			sourceID := repomanifest.GenerateSourceID(&tempSource)
 
-			addErr = addBulkFromLocalWithMode(parsed.LocalPath, manager, filterFlag, sourceID, importMode, "")
+			addErr = addBulkFromLocalWithMode(parsed.LocalPath, manager, filterFlags, sourceID, importMode, "")
 		}
 
 		// If add operation failed or in dry-run mode, return early
@@ -174,7 +183,7 @@ Run 'aimgr repo add --help' for full documentation`)
 		}
 
 		// Add source to manifest after successful add
-		if err := addSourceToManifest(manager, parsed); err != nil {
+		if err := addSourceToManifest(manager, parsed, filterFlags); err != nil {
 			// Don't fail the entire operation if manifest tracking fails
 			fmt.Fprintf(os.Stderr, "Warning: Failed to track source in manifest: %v\n", err)
 		} else {
@@ -196,7 +205,7 @@ func init() {
 	repoAddCmd.Flags().BoolVarP(&forceFlag, "force", "f", false, "Overwrite existing resources")
 	repoAddCmd.Flags().BoolVar(&skipExistingFlag, "skip-existing", false, "Skip conflicts silently")
 	repoAddCmd.Flags().BoolVar(&dryRunFlag, "dry-run", false, "Preview without adding")
-	repoAddCmd.Flags().StringVar(&filterFlag, "filter", "", "Filter resources by pattern (e.g., 'skill/*', '*test*')")
+	repoAddCmd.Flags().StringArrayVar(&filterFlags, "filter", nil, "Filter resources by pattern, repeatable (e.g., --filter skill/pdf --filter 'skill/web*')")
 	repoAddCmd.Flags().StringVar(&addFormatFlag, "format", "table", "Output format: table, json, yaml")
 	repoAddCmd.Flags().StringVar(&nameFlag, "name", "", "Override auto-generated source name")
 	_ = repoAddCmd.RegisterFlagCompletionFunc("format", completeFormatFlag)
@@ -303,118 +312,50 @@ func addResourceFile(filePath string, res *resource.Resource, resType resource.R
 	return nil
 }
 
-// applyFilter filters discovered resources based on a pattern.
-// Returns filtered slices and a boolean indicating if filtering was applied.
+// applyFilter filters discovered resources based on one or more patterns (OR logic).
+// Returns filtered slices. Empty/nil filterPatterns returns all resources unchanged.
 //
 //nolint:gocyclo // Orchestrates pattern matching across 4 resource types with type-specific matching logic; splitting would scatter filter semantics.
-func applyFilter(filterPattern string, commands, skills, agents []*resource.Resource, packages []*resource.Package) ([]*resource.Resource, []*resource.Resource, []*resource.Resource, []*resource.Package, error) {
-	if filterPattern == "" {
+func applyFilter(filterPatterns []string, commands, skills, agents []*resource.Resource, packages []*resource.Package) ([]*resource.Resource, []*resource.Resource, []*resource.Resource, []*resource.Package, error) {
+	if len(filterPatterns) == 0 {
 		// No filter, return all resources
 		return commands, skills, agents, packages, nil
 	}
 
-	// Parse the pattern
-	matcher, err := pattern.NewMatcher(filterPattern)
+	// Build multi-matcher (OR logic across all patterns)
+	mm, err := pattern.NewMultiMatcher(filterPatterns)
 	if err != nil {
 		return nil, nil, nil, nil, fmt.Errorf("invalid filter pattern: %w", err)
 	}
 
-	// If not a pattern (exact name), try to match by name across all types
-	if !matcher.IsPattern() {
-		// Exact match - find the resource by name
-		var filteredCommands []*resource.Resource
-		var filteredSkills []*resource.Resource
-		var filteredAgents []*resource.Resource
-		var filteredPackages []*resource.Package
-
-		// Get the resource type filter (if specified)
-		resourceType := matcher.GetResourceType()
-
-		// Check commands (if no type filter or type is command)
-		if resourceType == "" || resourceType == resource.Command {
-			for _, cmd := range commands {
-				if cmd.Name == filterPattern || matcher.Match(cmd) {
-					filteredCommands = append(filteredCommands, cmd)
-				}
-			}
-		}
-
-		// Check skills (if no type filter or type is skill)
-		if resourceType == "" || resourceType == resource.Skill {
-			for _, skill := range skills {
-				if skill.Name == filterPattern || matcher.Match(skill) {
-					filteredSkills = append(filteredSkills, skill)
-				}
-			}
-		}
-
-		// Check agents (if no type filter or type is agent)
-		if resourceType == "" || resourceType == resource.Agent {
-			for _, agent := range agents {
-				if agent.Name == filterPattern || matcher.Match(agent) {
-					filteredAgents = append(filteredAgents, agent)
-				}
-			}
-		}
-
-		// Check packages (if no type filter or type is package)
-		if resourceType == "" || resourceType == resource.PackageType {
-			for _, pkg := range packages {
-				// Create a temporary Resource for matching
-				tempRes := &resource.Resource{Type: resource.PackageType, Name: pkg.Name}
-				if pkg.Name == filterPattern || matcher.Match(tempRes) {
-					filteredPackages = append(filteredPackages, pkg)
-				}
-			}
-		}
-
-		return filteredCommands, filteredSkills, filteredAgents, filteredPackages, nil
-	}
-
-	// Pattern matching - filter each resource type
 	var filteredCommands []*resource.Resource
 	var filteredSkills []*resource.Resource
 	var filteredAgents []*resource.Resource
 	var filteredPackages []*resource.Package
 
-	// Get the resource type filter (if specified)
-	resourceType := matcher.GetResourceType()
-
-	// Filter commands (if no type filter or type is command)
-	if resourceType == "" || resourceType == resource.Command {
-		for _, cmd := range commands {
-			if matcher.Match(cmd) {
-				filteredCommands = append(filteredCommands, cmd)
-			}
+	for _, cmd := range commands {
+		if mm.Match(cmd) {
+			filteredCommands = append(filteredCommands, cmd)
 		}
 	}
 
-	// Filter skills (if no type filter or type is skill)
-	if resourceType == "" || resourceType == resource.Skill {
-		for _, skill := range skills {
-			if matcher.Match(skill) {
-				filteredSkills = append(filteredSkills, skill)
-			}
+	for _, skill := range skills {
+		if mm.Match(skill) {
+			filteredSkills = append(filteredSkills, skill)
 		}
 	}
 
-	// Filter agents (if no type filter or type is agent)
-	if resourceType == "" || resourceType == resource.Agent {
-		for _, agent := range agents {
-			if matcher.Match(agent) {
-				filteredAgents = append(filteredAgents, agent)
-			}
+	for _, agent := range agents {
+		if mm.Match(agent) {
+			filteredAgents = append(filteredAgents, agent)
 		}
 	}
 
-	// Filter packages (if no type filter or type is package)
-	if resourceType == "" || resourceType == resource.PackageType {
-		for _, pkg := range packages {
-			// Create a temporary Resource for matching
-			tempRes := &resource.Resource{Type: resource.PackageType, Name: pkg.Name}
-			if matcher.Match(tempRes) {
-				filteredPackages = append(filteredPackages, pkg)
-			}
+	for _, pkg := range packages {
+		// Match package on its full reference "package/<name>" and plain name
+		pkgRes := &resource.Resource{Type: resource.PackageType, Name: pkg.Name}
+		if mm.Match(pkgRes) {
+			filteredPackages = append(filteredPackages, pkg)
 		}
 	}
 
@@ -428,7 +369,7 @@ func applyFilter(filterPattern string, commands, skills, agents []*resource.Reso
 func importFromLocalPath(
 	localPath string, // Local directory to import from
 	manager *repo.Manager, // Repository manager
-	filter string, // Optional filter pattern (empty string = no filter)
+	filter []string, // Optional filter patterns (nil/empty = no filter)
 	sourceURL string, // Source URL for metadata tracking
 	sourceType string, // "local", "github", "git-url", "test"
 	ref string, // Git ref (empty for local/test)
@@ -442,7 +383,7 @@ func importFromLocalPath(
 func importFromLocalPathWithMode(
 	localPath string, // Local directory to import from
 	manager *repo.Manager, // Repository manager
-	filter string, // Optional filter pattern (empty string = no filter)
+	filter []string, // Optional filter patterns (nil/empty = no filter)
 	sourceURL string, // Source URL for metadata tracking
 	sourceType string, // "local", "github", "git-url", "test"
 	ref string, // Git ref (empty for local/test)
@@ -502,7 +443,7 @@ func importFromLocalPathWithMode(
 	isHumanFormat := addFormatFlag == "" || addFormatFlag == "table"
 
 	// Apply filter if specified
-	if filter != "" {
+	if len(filter) > 0 {
 		var err error
 		commands, skills, agents, packages, err = applyFilter(filter, commands, skills, agents, packages)
 		if err != nil {
@@ -513,7 +454,7 @@ func importFromLocalPathWithMode(
 		filteredTotal := len(commands) + len(skills) + len(agents) + len(packages)
 		if filteredTotal == 0 {
 			if isHumanFormat {
-				fmt.Printf("⚠ Warning: Filter '%s' matched 0 resources (found %d total)\n\n", filter, totalResources)
+				fmt.Printf("⚠ Warning: Filter '%s' matched 0 resources (found %d total)\n\n", strings.Join(filter, ", "), totalResources)
 			}
 			return nil
 		}
@@ -522,7 +463,7 @@ func importFromLocalPathWithMode(
 		if isHumanFormat {
 			fmt.Printf("Found: %d commands, %d skills, %d agents, %d packages", origCommandCount, origSkillCount, origAgentCount, origPackageCount)
 			if filteredTotal < totalResources {
-				fmt.Printf(" (filtered to %d matching '%s')\n", filteredTotal, filter)
+				fmt.Printf(" (filtered to %d matching '%s')\n", filteredTotal, strings.Join(filter, ", "))
 			} else {
 				fmt.Println()
 			}
@@ -657,17 +598,17 @@ func importFromLocalPathWithMode(
 
 // addBulkFromLocal handles bulk add from a local folder or single file
 func addBulkFromLocal(localPath string, manager *repo.Manager) error {
-	return addBulkFromLocalWithFilter(localPath, manager, filterFlag)
+	return addBulkFromLocalWithFilter(localPath, manager, filterFlags)
 }
 
 // addBulkFromLocalWithFilter handles bulk add from a local folder or single file with a custom filter
-func addBulkFromLocalWithFilter(localPath string, manager *repo.Manager, filter string) error {
+func addBulkFromLocalWithFilter(localPath string, manager *repo.Manager, filter []string) error {
 	return addBulkFromLocalWithMode(localPath, manager, filter, "", "copy", "")
 }
 
 // addBulkFromLocalWithMode handles bulk add from a local folder or single file with custom filter and import mode.
 // If sourceName is non-empty it is used as-is; otherwise the name is derived from --name flag or filepath.Base.
-func addBulkFromLocalWithMode(localPath string, manager *repo.Manager, filter string, sourceID string, importMode string, sourceName string) error {
+func addBulkFromLocalWithMode(localPath string, manager *repo.Manager, filter []string, sourceID string, importMode string, sourceName string) error {
 	// Validate path exists
 	if _, err := os.Stat(localPath); err != nil {
 		return fmt.Errorf("path does not exist: %s", localPath)
@@ -697,8 +638,8 @@ func addBulkFromLocalWithMode(localPath string, manager *repo.Manager, filter st
 		} else {
 			fmt.Println("  Add Mode: COPY (resources copied to repository)")
 		}
-		if filter != "" {
-			fmt.Printf("  Filter: %s\n", filter)
+		if len(filter) > 0 {
+			fmt.Printf("  Filter: %s\n", strings.Join(filter, ", "))
 		}
 		fmt.Println()
 	}
@@ -726,11 +667,11 @@ func addBulkFromGitHub(parsed *source.ParsedSource, manager *repo.Manager) error
 	tempSource := repomanifest.Source{URL: parsed.URL}
 	sourceID := repomanifest.GenerateSourceID(&tempSource)
 
-	return addBulkFromGitHubWithFilter(parsed, manager, filterFlag, sourceID)
+	return addBulkFromGitHubWithFilter(parsed, manager, filterFlags, sourceID)
 }
 
 // addBulkFromGitHubWithFilter handles bulk add from a GitHub repository with a custom filter
-func addBulkFromGitHubWithFilter(parsed *source.ParsedSource, manager *repo.Manager, filter string, sourceID string) error {
+func addBulkFromGitHubWithFilter(parsed *source.ParsedSource, manager *repo.Manager, filter []string, sourceID string) error {
 	// Clone repository to workspace
 	cloneURL, err := source.GetCloneURL(parsed)
 	if err != nil {
@@ -772,8 +713,8 @@ func addBulkFromGitHubWithFilter(parsed *source.ParsedSource, manager *repo.Mana
 		if dryRunFlag {
 			fmt.Println("  Mode: DRY RUN (preview only)")
 		}
-		if filter != "" {
-			fmt.Printf("  Filter: %s\n", filter)
+		if len(filter) > 0 {
+			fmt.Printf("  Filter: %s\n", strings.Join(filter, ", "))
 		}
 		fmt.Println()
 	}
@@ -1124,8 +1065,10 @@ func formatGitHubShortURL(parsed *source.ParsedSource) string {
 	return result
 }
 
-// addSourceToManifest adds the source to ai.repo.yaml manifest
-func addSourceToManifest(manager *repo.Manager, parsed *source.ParsedSource) error {
+// addSourceToManifest adds the source to ai.repo.yaml manifest.
+// include contains the filter patterns to persist (nil/empty = no include filter).
+// If the source already exists, its Include field is replaced (REPLACE semantics).
+func addSourceToManifest(manager *repo.Manager, parsed *source.ParsedSource, include []string) error {
 	// Load existing manifest
 	manifest, err := repomanifest.Load(manager.GetRepoPath())
 	if err != nil {
@@ -1134,7 +1077,8 @@ func addSourceToManifest(manager *repo.Manager, parsed *source.ParsedSource) err
 
 	// Create source entry
 	manifestSource := &repomanifest.Source{
-		Name: nameFlag, // Will be auto-generated if empty
+		Name:    nameFlag, // Will be auto-generated if empty
+		Include: include,
 	}
 
 	// Set path or URL based on source type
@@ -1152,16 +1096,22 @@ func addSourceToManifest(manager *repo.Manager, parsed *source.ParsedSource) err
 		manifestSource.Subpath = parsed.Subpath
 	}
 
-	// Check if source already exists
-	if existing, found := manifest.GetSource(manifestSource.Path + manifestSource.URL); found {
-		// Source already exists, skip
+	// Check if source already exists — REPLACE semantics
+	identifier := manifestSource.Path + manifestSource.URL
+	if existing, found := manifest.GetSource(identifier); found {
+		// Update Include with new values (replace, not merge)
+		existing.Include = include
+		// Save manifest with updated include
+		if err := manifest.Save(manager.GetRepoPath()); err != nil {
+			return fmt.Errorf("failed to save manifest: %w", err)
+		}
 		if addFormatFlag == "" || addFormatFlag == "table" {
-			fmt.Printf("\nℹ Source '%s' already tracked in manifest\n", existing.Name)
+			fmt.Printf("\n✓ Source '%s' updated in ai.repo.yaml\n", existing.Name)
 		}
 		return nil
 	}
 
-	// Add source to manifest
+	// Add source to manifest (new source)
 	if err := manifest.AddSource(manifestSource); err != nil {
 		return fmt.Errorf("failed to add source to manifest: %w", err)
 	}

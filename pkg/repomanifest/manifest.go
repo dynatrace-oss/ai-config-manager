@@ -11,6 +11,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/pattern"
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/sourcemetadata"
 )
 
@@ -27,12 +28,13 @@ type Manifest struct {
 
 // Source represents a single synced source in the repository
 type Source struct {
-	ID      string `yaml:"id,omitempty"`
-	Name    string `yaml:"name"`
-	Path    string `yaml:"path,omitempty"`
-	URL     string `yaml:"url,omitempty"`
-	Ref     string `yaml:"ref,omitempty"`
-	Subpath string `yaml:"subpath,omitempty"`
+	ID      string   `yaml:"id,omitempty"`
+	Name    string   `yaml:"name"`
+	Path    string   `yaml:"path,omitempty"`
+	URL     string   `yaml:"url,omitempty"`
+	Ref     string   `yaml:"ref,omitempty"`
+	Subpath string   `yaml:"subpath,omitempty"`
+	Include []string `yaml:"include,omitempty"`
 }
 
 // GetMode returns the implicit mode for this source
@@ -288,6 +290,13 @@ func validateSource(source *Source) error {
 	// Cannot have both path and URL
 	if source.Path != "" && source.URL != "" {
 		return fmt.Errorf("source cannot have both path and url")
+	}
+
+	// Validate include patterns
+	for _, entry := range source.Include {
+		if _, err := pattern.NewMatcher(entry); err != nil {
+			return fmt.Errorf("invalid include pattern %q: %w", entry, err)
+		}
 	}
 
 	return nil

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/gobwas/glob"
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/resource"
+	"github.com/gobwas/glob"
 )
 
 // Matcher holds compiled glob patterns for efficient matching
@@ -146,6 +146,76 @@ func FilterResources(resources []*resource.Resource, pattern string) ([]*resourc
 	var filtered []*resource.Resource
 	for _, res := range resources {
 		if m.Match(res) {
+			filtered = append(filtered, res)
+		}
+	}
+
+	return filtered, nil
+}
+
+// MultiMatcher holds multiple compiled patterns for OR-logic matching.
+// A resource matches if it matches ANY of the patterns.
+// An empty MultiMatcher matches everything (no filtering).
+type MultiMatcher struct {
+	matchers []*Matcher
+}
+
+// NewMultiMatcher creates a matcher that matches if ANY pattern matches (OR logic).
+// Empty patterns slice means "match everything".
+func NewMultiMatcher(patterns []string) (*MultiMatcher, error) {
+	matchers := make([]*Matcher, 0, len(patterns))
+	for _, p := range patterns {
+		m, err := NewMatcher(p)
+		if err != nil {
+			return nil, fmt.Errorf("invalid pattern %q: %w", p, err)
+		}
+		matchers = append(matchers, m)
+	}
+	return &MultiMatcher{matchers: matchers}, nil
+}
+
+// Match returns true if the resource matches any pattern, or if no patterns are set.
+func (mm *MultiMatcher) Match(res *resource.Resource) bool {
+	if len(mm.matchers) == 0 {
+		return true
+	}
+	for _, m := range mm.matchers {
+		if m.Match(res) {
+			return true
+		}
+	}
+	return false
+}
+
+// MatchName returns true if the name matches any pattern, or if no patterns are set.
+func (mm *MultiMatcher) MatchName(name string) bool {
+	if len(mm.matchers) == 0 {
+		return true
+	}
+	for _, m := range mm.matchers {
+		if m.MatchName(name) {
+			return true
+		}
+	}
+	return false
+}
+
+// IsEmpty returns true if no patterns are configured (matches everything).
+func (mm *MultiMatcher) IsEmpty() bool {
+	return len(mm.matchers) == 0
+}
+
+// FilterResourcesMulti filters a slice of resources by multiple patterns (OR logic).
+// Empty patterns means return all resources.
+func FilterResourcesMulti(resources []*resource.Resource, patterns []string) ([]*resource.Resource, error) {
+	mm, err := NewMultiMatcher(patterns)
+	if err != nil {
+		return nil, err
+	}
+
+	var filtered []*resource.Resource
+	for _, res := range resources {
+		if mm.Match(res) {
 			filtered = append(filtered, res)
 		}
 	}

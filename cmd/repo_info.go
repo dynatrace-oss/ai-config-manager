@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/output"
@@ -14,6 +15,27 @@ import (
 )
 
 var repoInfoFormatFlag string
+
+// repoInfoSourceOutput is the structured representation of a source used in JSON/YAML output.
+type repoInfoSourceOutput struct {
+	Name       string   `json:"name" yaml:"name"`
+	Type       string   `json:"type" yaml:"type"`
+	Location   string   `json:"location" yaml:"location"`
+	Mode       string   `json:"mode" yaml:"mode"`
+	LastSynced string   `json:"last_synced" yaml:"last_synced"`
+	Include    []string `json:"include,omitempty" yaml:"include,omitempty"`
+}
+
+// repoInfoOutput is the structured output for JSON/YAML formats.
+type repoInfoOutput struct {
+	Location       string                 `json:"location" yaml:"location"`
+	TotalResources int                    `json:"total_resources" yaml:"total_resources"`
+	Commands       int                    `json:"commands" yaml:"commands"`
+	Skills         int                    `json:"skills" yaml:"skills"`
+	Agents         int                    `json:"agents" yaml:"agents"`
+	DiskUsage      string                 `json:"disk_usage,omitempty" yaml:"disk_usage,omitempty"`
+	Sources        []repoInfoSourceOutput `json:"sources" yaml:"sources"`
+}
 
 // repoInfoCmd represents the repo info command
 var repoInfoCmd = &cobra.Command{
@@ -126,19 +148,75 @@ Examples:
 			info.AddSection().Add("Sources", "0 (use 'aimgr repo add' to add sources)")
 		}
 
-		// Format key-value output first
+		// For JSON/YAML output use a structured type that includes full source details
+		if parsedFormat != output.Table {
+			structured := buildRepoInfoOutput(repoPath, len(allResources), commandCount, skillCount, agentCount, size, manifest, metadata)
+			return output.FormatOutput(structured, parsedFormat)
+		}
+
+		// Format key-value output first (table format)
 		if err := info.Format(parsedFormat); err != nil {
 			return err
 		}
 
 		// For table format, render sources table after key-value section
-		if parsedFormat == output.Table && manifest != nil && len(manifest.Sources) > 0 {
+		if manifest != nil && len(manifest.Sources) > 0 {
 			fmt.Println() // Add blank line between key-value and table
 			return renderSourcesTable(manifest.Sources, metadata)
 		}
 
 		return nil
 	},
+}
+
+// buildRepoInfoOutput constructs the structured output used for JSON/YAML formats.
+func buildRepoInfoOutput(
+	repoPath string,
+	totalResources, commandCount, skillCount, agentCount int,
+	diskBytes int64,
+	manifest *repomanifest.Manifest,
+	metadata *sourcemetadata.SourceMetadata,
+) *repoInfoOutput {
+	result := &repoInfoOutput{
+		Location:       repoPath,
+		TotalResources: totalResources,
+		Commands:       commandCount,
+		Skills:         skillCount,
+		Agents:         agentCount,
+		Sources:        []repoInfoSourceOutput{},
+	}
+
+	if diskBytes > 0 {
+		result.DiskUsage = formatBytes(diskBytes)
+	}
+
+	if manifest != nil {
+		for _, src := range manifest.Sources {
+			sourceType := "local"
+			location := src.Path
+			if src.URL != "" {
+				sourceType = "remote"
+				location = src.URL
+			}
+
+			lastSynced := "never"
+			if state, ok := metadata.Sources[src.Name]; ok && !state.LastSynced.IsZero() {
+				lastSynced = formatTimeSince(state.LastSynced)
+			}
+
+			entry := repoInfoSourceOutput{
+				Name:       src.Name,
+				Type:       sourceType,
+				Location:   location,
+				Mode:       src.GetMode(),
+				LastSynced: lastSynced,
+				Include:    src.Include,
+			}
+			result.Sources = append(result.Sources, entry)
+		}
+	}
+
+	return result
 }
 
 // calculateDirSize calculates the total size of a directory
@@ -170,13 +248,29 @@ func formatBytes(bytes int64) string {
 	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
 }
 
+// formatInclude formats the include filter list for display in the sources table.
+// Returns "all" if the list is empty (no filtering), a comma-separated list for
+// short lists (≤ 3 patterns and ≤ 30 chars combined), or a count summary like
+// "3 filters" for longer ones.
+func formatInclude(include []string) string {
+	if len(include) == 0 {
+		return "all"
+	}
+	// Summarise if there are more than 3 patterns or combined text is too wide (> 30 chars)
+	joined := strings.Join(include, ", ")
+	if len(include) > 3 || len(joined) > 30 {
+		return fmt.Sprintf("%d filters", len(include))
+	}
+	return joined
+}
+
 // renderSourcesTable renders sources as a table
 func renderSourcesTable(sources []*repomanifest.Source, metadata *sourcemetadata.SourceMetadata) error {
-	// Create table with columns: NAME, TYPE, LOCATION, MODE, LAST SYNCED
-	table := output.NewTable("NAME", "TYPE", "LOCATION", "MODE", "LAST SYNCED")
+	// Create table with columns: NAME, TYPE, LOCATION, MODE, LAST SYNCED, INCLUDE
+	table := output.NewTable("NAME", "TYPE", "LOCATION", "MODE", "LAST SYNCED", "INCLUDE")
 	table.WithResponsive().
-		WithDynamicColumn(2).                  // LOCATION column stretches
-		WithMinColumnWidths(20, 8, 30, 10, 12) // NAME, TYPE, LOCATION, MODE, LAST SYNCED
+		WithDynamicColumn(2).                      // LOCATION column stretches
+		WithMinColumnWidths(20, 8, 30, 10, 12, 10) // NAME, TYPE, LOCATION, MODE, LAST SYNCED, INCLUDE
 
 	// Add row for each source
 	for _, source := range sources {
@@ -204,6 +298,9 @@ func renderSourcesTable(sources []*repomanifest.Source, metadata *sourcemetadata
 			lastSynced = formatTimeSince(state.LastSynced)
 		}
 
+		// Format include filters
+		includeDisplay := formatInclude(source.Include)
+
 		// Add row with health indicator prepended to name
 		table.AddRow(
 			fmt.Sprintf("%s %s", healthIcon, source.Name),
@@ -211,6 +308,7 @@ func renderSourcesTable(sources []*repomanifest.Source, metadata *sourcemetadata
 			location,
 			mode,
 			lastSynced,
+			includeDisplay,
 		)
 	}
 

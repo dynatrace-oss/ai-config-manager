@@ -11,6 +11,7 @@ import (
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/discovery"
 	resmeta "github.com/dynatrace-oss/ai-config-manager/v3/pkg/metadata"
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/modifications"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/pattern"
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/repo"
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/repomanifest"
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/resource"
@@ -136,6 +137,11 @@ to skip resources that already exist in the repository.
 
 The ai.repo.yaml file is automatically maintained when you use "aimgr repo add".
 
+Include filters (set via "aimgr repo add --filter") are stored in ai.repo.yaml
+and respected during sync: only resources matching the include patterns are imported
+for that source. Removing a pattern from include and re-syncing removes the previously
+imported resource. Sources without include filters import all resources.
+
 Example ai.repo.yaml:
 
   version: 1
@@ -145,6 +151,9 @@ Example ai.repo.yaml:
     - name: community-skills
       url: https://github.com/owner/repo
       ref: main
+      include:
+        - skill/pdf-processing
+        - skill/ocr*
 
 Examples:
   # Sync all configured sources (overwrites existing)
@@ -299,9 +308,9 @@ func syncSource(src *repomanifest.Source, manager *repo.Manager) (string, error)
 	}
 
 	// Import from source path with appropriate mode
-	// Note: We don't pass a filter here because sync doesn't support filtering
-	// All resources from the source should be synced
-	err := addBulkFromLocalWithMode(sourcePath, manager, "", src.ID, mode, src.Name)
+	// Pass src.Include as the filter: only matching resources will be imported.
+	// Empty include (nil/[]) means import everything (backward compatible).
+	err := addBulkFromLocalWithMode(sourcePath, manager, src.Include, src.ID, mode, src.Name)
 	if err != nil {
 		return "", err
 	}
@@ -335,6 +344,29 @@ func detectRemovedForSource(src *repomanifest.Source, sourcePath, repoPath strin
 	if scanErr != nil {
 		fmt.Fprintf(os.Stderr, "  Warning: could not scan source for removal detection: %v\n", scanErr)
 		return nil
+	}
+
+	// Apply include filter to source resources: if include patterns are set, only
+	// resources matching the patterns are considered "present in source". Resources
+	// that exist in the source but are excluded by include are treated as absent —
+	// this ensures that removing an entry from include and re-syncing removes the
+	// previously imported resource (orphan detection for filter changes).
+	if len(src.Include) > 0 {
+		mm, err := pattern.NewMultiMatcher(src.Include)
+		if err == nil {
+			for resType, typeSet := range sourceResources {
+				for name := range typeSet {
+					res := &resource.Resource{Type: resType, Name: name}
+					if !mm.Match(res) {
+						delete(typeSet, name)
+					}
+				}
+				// Remove empty type sets to keep the map clean
+				if len(typeSet) == 0 {
+					delete(sourceResources, resType)
+				}
+			}
+		}
 	}
 
 	var removed []resourceInfo

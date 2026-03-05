@@ -11,6 +11,103 @@ import (
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/sourcemetadata"
 )
 
+func TestFormatInclude(t *testing.T) {
+	tests := []struct {
+		name     string
+		include  []string
+		expected string
+	}{
+		{
+			name:     "nil include (no filtering)",
+			include:  nil,
+			expected: "all",
+		},
+		{
+			name:     "empty slice (no filtering)",
+			include:  []string{},
+			expected: "all",
+		},
+		{
+			name:     "single short pattern",
+			include:  []string{"skills/*"},
+			expected: "skills/*",
+		},
+		{
+			name:     "two short patterns",
+			include:  []string{"skills/*", "commands/*"},
+			expected: "skills/*, commands/*",
+		},
+		{
+			name:     "combined text exactly at limit",
+			include:  []string{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}, // 30 chars
+			expected: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		},
+		{
+			name:     "combined text over limit shows count",
+			include:  []string{"some-very-long-pattern/*", "another-very-long-pattern/*"},
+			expected: "2 filters",
+		},
+		{
+			name:     "many patterns shows count",
+			include:  []string{"a", "b", "c", "d"},
+			expected: "4 filters",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := formatInclude(tt.include)
+			if result != tt.expected {
+				t.Errorf("formatInclude(%v) = %q, want %q", tt.include, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestRenderSourcesTableIncludeColumn(t *testing.T) {
+	// Create metadata (no sync times needed for this test)
+	metadata := &sourcemetadata.SourceMetadata{
+		Version: 1,
+		Sources: make(map[string]*sourcemetadata.SourceState),
+	}
+
+	sources := []*repomanifest.Source{
+		{
+			Name: "no-filter",
+			URL:  "https://github.com/user/repo",
+			// Include is nil — should show "all"
+		},
+		{
+			Name:    "with-filter",
+			URL:     "https://github.com/user/other",
+			Include: []string{"skills/*", "commands/*"},
+		},
+	}
+
+	// renderSourcesTable writes to stdout; wrap in a capture to assert content
+	// Since renderSourcesTable writes directly to os.Stdout via output.Table,
+	// we just confirm it doesn't error and that formatInclude returns correct values
+	// (the detailed table rendering is already tested by the output package).
+	for i, src := range sources {
+		got := formatInclude(src.Include)
+		switch i {
+		case 0:
+			if got != "all" {
+				t.Errorf("source without include: formatInclude() = %q, want %q", got, "all")
+			}
+		case 1:
+			if !strings.Contains(got, "skills/*") {
+				t.Errorf("source with include: formatInclude() = %q, should contain %q", got, "skills/*")
+			}
+		}
+	}
+
+	// Also confirm renderSourcesTable doesn't return an error
+	if err := renderSourcesTable(sources, metadata); err != nil {
+		t.Errorf("renderSourcesTable() error = %v", err)
+	}
+}
+
 func TestFormatTimeSince(t *testing.T) {
 	tests := []struct {
 		name     string

@@ -1057,3 +1057,234 @@ func TestGenerateSourceName(t *testing.T) {
 }
 
 // TestTimestampFormat removed - timestamp handling moved to sourcemetadata package
+
+func TestSourceInclude_Serialization(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		wantErr bool
+		checkFn func(*testing.T, *Manifest)
+	}{
+		{
+			name: "source with include serializes and deserializes",
+			content: `version: 1
+sources:
+  - name: my-source
+    url: https://github.com/user/repo
+    include:
+      - skill/pdf*
+      - command/test-cmd`,
+			wantErr: false,
+			checkFn: func(t *testing.T, m *Manifest) {
+				if len(m.Sources) != 1 {
+					t.Fatalf("expected 1 source, got %d", len(m.Sources))
+				}
+				s := m.Sources[0]
+				if len(s.Include) != 2 {
+					t.Fatalf("expected 2 include entries, got %d", len(s.Include))
+				}
+				if s.Include[0] != "skill/pdf*" {
+					t.Errorf("unexpected include[0]: %s", s.Include[0])
+				}
+				if s.Include[1] != "command/test-cmd" {
+					t.Errorf("unexpected include[1]: %s", s.Include[1])
+				}
+			},
+		},
+		{
+			name: "source without include loads fine (backward compat)",
+			content: `version: 1
+sources:
+  - name: legacy-source
+    path: /some/path`,
+			wantErr: false,
+			checkFn: func(t *testing.T, m *Manifest) {
+				if len(m.Sources) != 1 {
+					t.Fatalf("expected 1 source, got %d", len(m.Sources))
+				}
+				s := m.Sources[0]
+				if s.Include != nil {
+					t.Errorf("expected nil include for legacy source, got %v", s.Include)
+				}
+			},
+		},
+		{
+			name: "source with empty include list loads fine",
+			content: `version: 1
+sources:
+  - name: no-filter-source
+    url: https://github.com/user/repo
+    include: []`,
+			wantErr: false,
+			checkFn: func(t *testing.T, m *Manifest) {
+				if len(m.Sources) != 1 {
+					t.Fatalf("expected 1 source, got %d", len(m.Sources))
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			path := filepath.Join(tmpDir, ManifestFileName)
+			if err := os.WriteFile(path, []byte(tt.content), 0644); err != nil {
+				t.Fatalf("failed to write test file: %v", err)
+			}
+
+			m, err := Load(tmpDir)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Load() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if !tt.wantErr && tt.checkFn != nil {
+				tt.checkFn(t, m)
+			}
+		})
+	}
+}
+
+func TestSourceInclude_SaveRoundtrip(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	original := &Manifest{
+		Version: 1,
+		Sources: []*Source{
+			{
+				Name:    "filtered-source",
+				URL:     "https://github.com/user/repo",
+				Include: []string{"skill/pdf*", "command/build"},
+			},
+		},
+	}
+
+	if err := original.Save(tmpDir); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	loaded, err := Load(tmpDir)
+	if err != nil {
+		t.Fatalf("Load() after Save() error = %v", err)
+	}
+
+	if len(loaded.Sources) != 1 {
+		t.Fatalf("expected 1 source, got %d", len(loaded.Sources))
+	}
+
+	s := loaded.Sources[0]
+	if len(s.Include) != 2 {
+		t.Fatalf("expected 2 include entries after roundtrip, got %d", len(s.Include))
+	}
+	if s.Include[0] != "skill/pdf*" {
+		t.Errorf("expected Include[0] = 'skill/pdf*', got %q", s.Include[0])
+	}
+	if s.Include[1] != "command/build" {
+		t.Errorf("expected Include[1] = 'command/build', got %q", s.Include[1])
+	}
+}
+
+func TestValidateSource_Include(t *testing.T) {
+	tests := []struct {
+		name    string
+		source  *Source
+		wantErr bool
+	}{
+		{
+			name: "empty include is valid (means all resources)",
+			source: &Source{
+				Name: "test",
+				Path: "/test",
+			},
+			wantErr: false,
+		},
+		{
+			name: "nil include is valid",
+			source: &Source{
+				Name:    "test",
+				Path:    "/test",
+				Include: nil,
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid glob pattern in include",
+			source: &Source{
+				Name:    "test",
+				URL:     "https://github.com/user/repo",
+				Include: []string{"skill/pdf*"},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid exact name in include",
+			source: &Source{
+				Name:    "test",
+				URL:     "https://github.com/user/repo",
+				Include: []string{"command/build-project"},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid multiple patterns in include",
+			source: &Source{
+				Name:    "test",
+				URL:     "https://github.com/user/repo",
+				Include: []string{"skill/*", "command/build", "agent/reviewer"},
+			},
+			wantErr: false,
+		},
+		{
+			name: "invalid glob pattern in include",
+			source: &Source{
+				Name:    "test",
+				URL:     "https://github.com/user/repo",
+				Include: []string{"skill/[invalid"},
+			},
+			wantErr: true,
+		},
+		{
+			name: "empty string in include is invalid",
+			source: &Source{
+				Name:    "test",
+				URL:     "https://github.com/user/repo",
+				Include: []string{""},
+			},
+			wantErr: true,
+		},
+		{
+			name: "first pattern valid, second invalid",
+			source: &Source{
+				Name:    "test",
+				URL:     "https://github.com/user/repo",
+				Include: []string{"skill/pdf*", "command/[bad"},
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateSource(tt.source)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateSource() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestValidateSource_Include_ErrorContainsPattern(t *testing.T) {
+	source := &Source{
+		Name:    "test",
+		URL:     "https://github.com/user/repo",
+		Include: []string{"skill/[invalid"},
+	}
+
+	err := validateSource(source)
+	if err == nil {
+		t.Fatal("validateSource() expected error for invalid pattern, got nil")
+	}
+	if !strings.Contains(err.Error(), "skill/[invalid") {
+		t.Errorf("expected error to contain the bad pattern, got: %s", err.Error())
+	}
+}

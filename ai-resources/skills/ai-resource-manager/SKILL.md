@@ -33,7 +33,7 @@ Manage AI resources via `aimgr`. Resources live in `~/.local/share/ai-config/rep
 | Issue | Fix |
 |-------|-----|
 | Skills not loading | Restart AI tool |
-| `aimgr` not found | `mise use -g github:dynatrace-oss/ai-config-manager` or download from [releases](https://github.com/dynatrace-oss/ai-config-manager/releases) |
+| `aimgr` not found | `mise use -g github:dynatrace-oss/ai-config-manager` or `go install github.com/dynatrace-oss/ai-config-manager/v3/cmd/aimgr@latest` |
 | Resource not found | `aimgr repo sync` |
 | Broken symlinks | `aimgr repair` or `aimgr repo repair` |
 

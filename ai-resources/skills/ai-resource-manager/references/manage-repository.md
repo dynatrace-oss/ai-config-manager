@@ -64,6 +64,10 @@ aimgr repo add https://bitbucket.org/org/repo
 aimgr repo add https://gitlab.com/group/project
 aimgr repo add git@bitbucket.org:org/repo.git
 
+# Monorepo subpath (via .git/ delimiter)
+aimgr repo add https://bitbucket.org/org/monorepo.git/path/to/resources
+aimgr repo add https://gitlab.com/group/project.git/ai-resources
+
 # Options
 aimgr repo add gh:owner/repo --name=my-source  # Custom source name
 aimgr repo add gh:owner/repo --filter "skill/*" # Only import skills
@@ -74,10 +78,15 @@ aimgr repo add local:./resources --dry-run            # Preview only
 
 ### Source Types
 
-| Type | Import Mode | Best For |
-|------|-------------|----------|
-| Local path | Symlink | Development, rapid iteration |
-| GitHub URL | Copy | Production, versioned resources |
+| Format | Example | Import Mode |
+|--------|---------|-------------|
+| GitHub shorthand | `gh:owner/repo` (optional `@ref`, `/subpath`) | Copy |
+| Local directory | `local:./path/to/dir` | Symlink |
+| HTTPS Git URL | `https://github.com/owner/repo.git` | Copy |
+| HTTPS monorepo | `https://host/org/repo.git/subpath` | Copy |
+| SSH Git URL | `git@github.com:owner/repo.git` | Copy |
+
+⚠️ **v3.0+:** All sources require explicit prefixes. Bare paths like `owner/repo` or `./path` are rejected with actionable error messages.
 
 ### ai.repo.yaml Format
 
@@ -195,7 +204,7 @@ ls .claude/skills/my-skill/SKILL.md
 # GitHub Actions
 - name: Validate resources
   run: |
-    mise use -g github:dynatrace-oss/ai-config-manager
+    go install github.com/dynatrace-oss/ai-config-manager/v3/cmd/aimgr@latest
     aimgr repo add local:. --dry-run --format=json
 ```
 

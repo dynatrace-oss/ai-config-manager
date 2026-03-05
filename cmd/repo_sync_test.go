@@ -680,10 +680,113 @@ func TestRunSync_PreservesManifest(t *testing.T) {
 	}
 }
 
-// TestRunSync_WithFilter is skipped since sync doesn't support filtering
-// Filters are per-source at add time, not at sync time
-func TestRunSync_WithFilter(t *testing.T) {
-	t.Skip("Sync does not support filtering - filters are applied at 'repo add' time, not sync time")
+// TestRunSync_WithIncludeFilter verifies that a source with include filters
+// only imports matching resources and skips non-matching ones.
+func TestRunSync_WithIncludeFilter(t *testing.T) {
+	sourceDir := createTestSource(t)
+
+	// Source has include: only import pdf-command and the pdf-processing skill
+	sources := []*repomanifest.Source{
+		{
+			Name:    "filtered-source",
+			Path:    sourceDir,
+			ID:      "src-filter-test",
+			Include: []string{"command/pdf-command", "skill/pdf-processing"},
+		},
+	}
+	repoPath, cleanup := setupTestManifest(t, sources)
+	defer cleanup()
+
+	err := runSync(syncCmd, []string{})
+	if err != nil {
+		t.Fatalf("sync with include filter failed: %v", err)
+	}
+
+	// Only the included resources should be imported
+	verifyResourcesInRepo(t, repoPath, resource.Command, "pdf-command")
+	verifyResourcesInRepo(t, repoPath, resource.Skill, "pdf-processing")
+
+	// Non-matching resources should NOT be imported
+	verifyResourcesNotInRepo(t, repoPath, resource.Command, "sync-test-cmd", "test-command")
+	verifyResourcesNotInRepo(t, repoPath, resource.Skill, "sync-test-skill", "image-processing")
+	verifyResourcesNotInRepo(t, repoPath, resource.Agent, "sync-test-agent", "code-reviewer")
+}
+
+// TestRunSync_WithIncludeFilter_BackwardCompat verifies that a source without
+// include filters imports all resources (backward compatibility).
+func TestRunSync_WithIncludeFilter_BackwardCompat(t *testing.T) {
+	sourceDir := createTestSource(t)
+
+	// Source has NO include filter — all resources should be imported
+	sources := []*repomanifest.Source{
+		{
+			Name: "unfiltered-source",
+			Path: sourceDir,
+			ID:   "src-no-filter",
+		},
+	}
+	repoPath, cleanup := setupTestManifest(t, sources)
+	defer cleanup()
+
+	err := runSync(syncCmd, []string{})
+	if err != nil {
+		t.Fatalf("sync without include filter failed: %v", err)
+	}
+
+	// All resources from the source should be imported
+	verifyResourcesInRepo(t, repoPath, resource.Command, "sync-test-cmd", "test-command", "pdf-command")
+	verifyResourcesInRepo(t, repoPath, resource.Skill, "sync-test-skill", "pdf-processing", "image-processing")
+	verifyResourcesInRepo(t, repoPath, resource.Agent, "sync-test-agent", "code-reviewer")
+}
+
+// TestRunSync_IncludeFilterOrphanDetection verifies that a resource previously
+// imported (included) is removed from the repo when it is removed from include
+// and a sync is performed.
+func TestRunSync_IncludeFilterOrphanDetection(t *testing.T) {
+	sourceDir := createTestSource(t)
+
+	// First sync: include both pdf-command and test-command
+	sources := []*repomanifest.Source{
+		{
+			Name:    "shrinking-filter-source",
+			Path:    sourceDir,
+			ID:      "src-shrink-filter",
+			Include: []string{"command/pdf-command", "command/test-command"},
+		},
+	}
+	repoPath, cleanup := setupTestManifest(t, sources)
+	defer cleanup()
+
+	err := runSync(syncCmd, []string{})
+	if err != nil {
+		t.Fatalf("first sync failed: %v", err)
+	}
+
+	// Both included commands should be in the repo
+	verifyResourcesInRepo(t, repoPath, resource.Command, "pdf-command", "test-command")
+
+	// Non-included resources should not be present
+	verifyResourcesNotInRepo(t, repoPath, resource.Command, "sync-test-cmd")
+	verifyResourcesNotInRepo(t, repoPath, resource.Skill, "pdf-processing")
+
+	// Now narrow the include to only pdf-command (remove test-command from include)
+	sources[0].Include = []string{"command/pdf-command"}
+	manifest := &repomanifest.Manifest{Version: 1, Sources: sources}
+	if err := manifest.Save(repoPath); err != nil {
+		t.Fatalf("failed to update manifest with narrowed include: %v", err)
+	}
+
+	// Second sync: test-command was previously imported but is now outside include
+	err = runSync(syncCmd, []string{})
+	if err != nil {
+		t.Fatalf("second sync failed: %v", err)
+	}
+
+	// pdf-command is still included — must remain in repo
+	verifyResourcesInRepo(t, repoPath, resource.Command, "pdf-command")
+
+	// test-command is no longer in include — must be removed as orphan
+	verifyResourcesNotInRepo(t, repoPath, resource.Command, "test-command")
 }
 
 // TestRunSync_MetadataCommitted verifies that metadata changes are committed to git
