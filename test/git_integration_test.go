@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/dynatrace-oss/ai-config-manager/pkg/source"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/workspace"
-	"github.com/dynatrace-oss/ai-config-manager/test/testutil"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/source"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/workspace"
+	"github.com/dynatrace-oss/ai-config-manager/v3/test/testutil"
 )
 
 const controlledRepo = "https://github.com/dynatrace-oss/ai-config-manager"

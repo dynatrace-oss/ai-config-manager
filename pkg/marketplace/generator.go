@@ -7,8 +7,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/dynatrace-oss/ai-config-manager/pkg/discovery"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/resource"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/discovery"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/resource"
 )
 
 // PackageInfo contains a generated package and its source directory

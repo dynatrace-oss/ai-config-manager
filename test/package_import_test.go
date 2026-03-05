@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dynatrace-oss/ai-config-manager/pkg/discovery"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/repo"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/resource"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/discovery"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/repo"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/resource"
 )
 
 // TestPackageAutoImportFromLocalDir tests importing packages from a local directory structure

@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dynatrace-oss/ai-config-manager/pkg/repo"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/resource"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/tools"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/repo"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/resource"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/tools"
 )
 
 func TestParseTargetFlag(t *testing.T) {

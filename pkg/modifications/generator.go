@@ -27,9 +27,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/dynatrace-oss/ai-config-manager/pkg/config"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/frontmatter"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/resource"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/config"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/frontmatter"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/resource"
 )
 
 // ModificationsDirName is the name of the modifications directory in the repo

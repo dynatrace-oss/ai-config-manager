@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dynatrace-oss/ai-config-manager/pkg/logging"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/repo"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/logging"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/repo"
 )
 
 func TestRootCommand(t *testing.T) {

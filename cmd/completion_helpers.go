@@ -6,8 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/dynatrace-oss/ai-config-manager/pkg/repomanifest"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/resource"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/repomanifest"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/resource"
 )
 
 // statusIconOK is the checkmark icon displayed for healthy/in-sync resources.

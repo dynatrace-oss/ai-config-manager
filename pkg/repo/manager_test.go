@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dynatrace-oss/ai-config-manager/pkg/metadata"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/repomanifest"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/resource"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/metadata"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/repomanifest"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/resource"
 )
 
 func TestManagerInit(t *testing.T) {

@@ -19,9 +19,9 @@ builds:
       - arm64
     ldflags:
       - -s -w
-      - -X github.com/dynatrace-oss/ai-config-manager/pkg/version.Version={{.Version}}
-      - -X github.com/dynatrace-oss/ai-config-manager/pkg/version.GitCommit={{.ShortCommit}}
-      - -X github.com/dynatrace-oss/ai-config-manager/pkg/version.BuildDate={{.Date}}
+      - -X github.com/dynatrace-oss/ai-config-manager/v3/pkg/version.Version={{.Version}}
+      - -X github.com/dynatrace-oss/ai-config-manager/v3/pkg/version.GitCommit={{.ShortCommit}}
+      - -X github.com/dynatrace-oss/ai-config-manager/v3/pkg/version.BuildDate={{.Date}}
 
 archives:
   - format: tar.gz

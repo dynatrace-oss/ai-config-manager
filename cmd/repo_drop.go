@@ -8,7 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/dynatrace-oss/ai-config-manager/pkg/repo"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/repo"
 )
 
 // repoDropCmd represents the drop command

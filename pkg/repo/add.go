@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dynatrace-oss/ai-config-manager/pkg/config"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/metadata"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/modifications"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/resource"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/config"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/metadata"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/modifications"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/resource"
 )
 
 // resourceLoader is a strategy function type for loading different resource types

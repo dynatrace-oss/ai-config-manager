@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dynatrace-oss/ai-config-manager/pkg/metadata"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/repo"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/resource"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/metadata"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/repo"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/resource"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )

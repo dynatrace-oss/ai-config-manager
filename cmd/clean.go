@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/dynatrace-oss/ai-config-manager/pkg/output"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/tools"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/output"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/tools"
 	"github.com/spf13/cobra"
 )
 

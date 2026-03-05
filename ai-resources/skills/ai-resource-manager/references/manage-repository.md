@@ -195,7 +195,7 @@ ls .claude/skills/my-skill/SKILL.md
 # GitHub Actions
 - name: Validate resources
   run: |
-    go install github.com/dynatrace-oss/ai-config-manager/cmd/aimgr@latest
+    mise use -g github:dynatrace-oss/ai-config-manager
     aimgr repo add local:. --dry-run --format=json
 ```
 

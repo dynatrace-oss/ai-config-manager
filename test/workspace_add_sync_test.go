@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/dynatrace-oss/ai-config-manager/pkg/source"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/source"
 )
 
 // TestWorkspaceCacheWithLocalSource verifies local sources don't create cache

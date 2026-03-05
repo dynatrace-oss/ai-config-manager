@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/dynatrace-oss/ai-config-manager/cmd"
+	"github.com/dynatrace-oss/ai-config-manager/v3/cmd"
 )
 
 func main() {

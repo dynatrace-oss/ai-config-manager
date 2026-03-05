@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/gobwas/glob"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/resource"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/resource"
 )
 
 // Matcher holds compiled glob patterns for efficient matching

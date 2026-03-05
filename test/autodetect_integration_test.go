@@ -8,11 +8,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dynatrace-oss/ai-config-manager/pkg/install"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/metadata"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/repo"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/resource"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/tools"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/install"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/metadata"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/repo"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/resource"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/tools"
 )
 
 // TestAutoDetect_RepoImportDirectory tests importing directories with nested command structures

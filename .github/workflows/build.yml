@@ -134,7 +134,7 @@ jobs:
           fi
           
           go build \
-            -ldflags "-s -w -X github.com/dynatrace-oss/ai-config-manager/pkg/version.Version=${{ steps.version.outputs.version }} -X github.com/dynatrace-oss/ai-config-manager/pkg/version.GitCommit=${{ steps.version.outputs.commit }} -X github.com/dynatrace-oss/ai-config-manager/pkg/version.BuildDate=${{ steps.version.outputs.date }}" \
+            -ldflags "-s -w -X github.com/dynatrace-oss/ai-config-manager/v3/pkg/version.Version=${{ steps.version.outputs.version }} -X github.com/dynatrace-oss/ai-config-manager/v3/pkg/version.GitCommit=${{ steps.version.outputs.commit }} -X github.com/dynatrace-oss/ai-config-manager/v3/pkg/version.BuildDate=${{ steps.version.outputs.date }}" \
             -o "bin/${BINARY_NAME}" \
             ./cmd/aimgr
 

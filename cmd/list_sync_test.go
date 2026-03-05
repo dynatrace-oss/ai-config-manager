@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/dynatrace-oss/ai-config-manager/pkg/manifest"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/manifest"
 )
 
 func TestGetSyncStatus_NoManifest(t *testing.T) {

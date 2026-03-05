@@ -5,9 +5,9 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/dynatrace-oss/ai-config-manager/pkg/pattern"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/repo"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/resource"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/pattern"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/repo"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/resource"
 )
 
 // Package-level logger for command parsing logging

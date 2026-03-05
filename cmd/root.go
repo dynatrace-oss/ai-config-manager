@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/dynatrace-oss/ai-config-manager/pkg/discovery"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/logging"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/manifest"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/repo"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/version"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/workspace"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/discovery"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/logging"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/manifest"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/repo"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/version"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/workspace"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )

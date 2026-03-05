@@ -7,7 +7,7 @@
 //
 // Usage:
 //
-//	import "github.com/dynatrace-oss/ai-config-manager/test/testutil"
+//	import "github.com/dynatrace-oss/ai-config-manager/v3/test/testutil"
 //
 //	func TestExample(t *testing.T) {
 //	    testutil.SkipIfNoGit(t) // Skip if Git or network unavailable

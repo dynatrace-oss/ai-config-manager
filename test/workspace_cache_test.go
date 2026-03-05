@@ -3,7 +3,7 @@ package test
 import (
 	"os/exec"
 
-	"github.com/dynatrace-oss/ai-config-manager/pkg/source"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/source"
 )
 
 // getRefOrDefault returns the ref from parsed source or "main" as default

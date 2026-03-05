@@ -7,11 +7,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/dynatrace-oss/ai-config-manager/pkg/metadata"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/output"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/pattern"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/repo"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/resource"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/metadata"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/output"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/pattern"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/repo"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/resource"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )

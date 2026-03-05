@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dynatrace-oss/ai-config-manager/pkg/resource"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/resource"
 )
 
 // setupGitRepo initializes a git repository in the given directory

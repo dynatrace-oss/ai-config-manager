@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/dynatrace-oss/ai-config-manager/pkg/config"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/manifest"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/tools"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/config"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/manifest"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/tools"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )

@@ -6,13 +6,13 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/dynatrace-oss/ai-config-manager/pkg/config"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/install"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/manifest"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/pattern"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/repo"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/resource"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/tools"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/config"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/install"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/manifest"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/pattern"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/repo"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/resource"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/tools"
 	"github.com/spf13/cobra"
 )
 

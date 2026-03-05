@@ -6,12 +6,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/dynatrace-oss/ai-config-manager/pkg/config"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/manifest"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/modifications"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/repo"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/resource"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/tools"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/config"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/manifest"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/modifications"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/repo"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/resource"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/tools"
 )
 
 // Installer manages resource installations in a project

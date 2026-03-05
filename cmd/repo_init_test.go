@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/dynatrace-oss/ai-config-manager/pkg/repo"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/repo"
 )
 
 func TestRepoInitCommand(t *testing.T) {

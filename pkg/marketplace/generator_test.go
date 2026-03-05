@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dynatrace-oss/ai-config-manager/pkg/resource"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/resource"
 )
 
 // TestGeneratePackages tests the GeneratePackages function

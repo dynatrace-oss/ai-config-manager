@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dynatrace-oss/ai-config-manager/pkg/resource"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/resource"
 )
 
 // ResourceMetadata tracks source information and timestamps for a resource.

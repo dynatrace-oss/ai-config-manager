@@ -3,8 +3,8 @@ package test
 import (
 	"testing"
 
-	"github.com/dynatrace-oss/ai-config-manager/pkg/discovery"
-	"github.com/dynatrace-oss/ai-config-manager/test/testutil"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/discovery"
+	"github.com/dynatrace-oss/ai-config-manager/v3/test/testutil"
 )
 
 func TestDiscoverSkills_StandardLocation(t *testing.T) {

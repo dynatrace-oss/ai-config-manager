@@ -1,4 +1,4 @@
-module github.com/dynatrace-oss/ai-config-manager
+module github.com/dynatrace-oss/ai-config-manager/v3
 
 go 1.25.6
 

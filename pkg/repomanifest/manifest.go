@@ -11,7 +11,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/dynatrace-oss/ai-config-manager/pkg/sourcemetadata"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/sourcemetadata"
 )
 
 const (

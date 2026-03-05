@@ -6,10 +6,10 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/dynatrace-oss/ai-config-manager/pkg/output"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/repomanifest"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/resource"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/sourcemetadata"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/output"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/repomanifest"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/resource"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/sourcemetadata"
 	"github.com/spf13/cobra"
 )
 

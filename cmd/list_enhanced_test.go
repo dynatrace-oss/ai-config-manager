@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dynatrace-oss/ai-config-manager/pkg/manifest"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/repo"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/manifest"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/repo"
 	"gopkg.in/yaml.v3"
 )
 

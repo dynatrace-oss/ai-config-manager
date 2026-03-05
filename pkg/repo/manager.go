@@ -9,9 +9,9 @@ import (
 	"strings"
 
 	"github.com/adrg/xdg"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/config"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/logging"
-	"github.com/dynatrace-oss/ai-config-manager/pkg/repomanifest"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/config"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/logging"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/repomanifest"
 )
 
 // Manager manages the AI resources repository
