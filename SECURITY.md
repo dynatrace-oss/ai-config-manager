@@ -140,7 +140,7 @@ Security updates are released as soon as possible after a vulnerability is confi
 
 ```bash
 # Update via go install
-go install github.com/dynatrace-oss/ai-config-manager/cmd/aimgr@latest
+go install github.com/dynatrace-oss/ai-config-manager/v3/cmd/aimgr@latest
 
 # Or rebuild from source
 cd ai-config-manager

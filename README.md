@@ -44,7 +44,7 @@ A command-line tool for discovering, installing, and managing AI resources (comm
 The easiest way to install `aimgr` is using Go:
 
 ```bash
-go install github.com/dynatrace-oss/ai-config-manager/cmd/aimgr@latest
+go install github.com/dynatrace-oss/ai-config-manager/v3/cmd/aimgr@latest
 ```
 
 ### From Source
