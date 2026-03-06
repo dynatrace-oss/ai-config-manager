@@ -12,6 +12,7 @@ import (
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/pattern"
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/repo"
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/resource"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/source"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
@@ -418,7 +419,7 @@ func createMetadataForResource(manager *repo.Manager, res resource.Resource) err
 	meta := &metadata.ResourceMetadata{
 		Name:           res.Name,
 		Type:           res.Type,
-		SourceType:     "local",
+		SourceType:     string(source.Local),
 		SourceURL:      "file://" + absPath,
 		FirstInstalled: fileInfo.ModTime(),
 		LastUpdated:    fileInfo.ModTime(),

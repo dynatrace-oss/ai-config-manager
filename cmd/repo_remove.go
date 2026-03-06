@@ -10,6 +10,7 @@ import (
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/repo"
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/repomanifest"
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/resource"
+	sourcepkg "github.com/dynatrace-oss/ai-config-manager/v3/pkg/source"
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/sourcemetadata"
 )
 
@@ -202,7 +203,7 @@ func getSourceType(source *repomanifest.Source) string {
 	if source.URL != "" {
 		return "remote"
 	}
-	return "local"
+	return string(sourcepkg.Local)
 }
 
 // getSourceLocation returns the path or URL of the source

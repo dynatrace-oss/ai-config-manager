@@ -10,6 +10,7 @@ import (
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/output"
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/repomanifest"
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/resource"
+	sourcepkg "github.com/dynatrace-oss/ai-config-manager/v3/pkg/source"
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/sourcemetadata"
 	"github.com/spf13/cobra"
 )
@@ -192,7 +193,7 @@ func buildRepoInfoOutput(
 
 	if manifest != nil {
 		for _, src := range manifest.Sources {
-			sourceType := "local"
+			sourceType := string(sourcepkg.Local)
 			location := src.Path
 			if src.URL != "" {
 				sourceType = "remote"
@@ -326,7 +327,7 @@ func formatSource(source *repomanifest.Source, metadata *sourcemetadata.SourceMe
 	}
 
 	// Determine source type and location
-	sourceType := "local"
+	sourceType := string(sourcepkg.Local)
 	location := source.Path
 	if source.URL != "" {
 		sourceType = "remote"

@@ -646,7 +646,7 @@ func addBulkFromLocalWithMode(localPath string, manager *repo.Manager, filter []
 
 	// Determine source info
 	sourceURL := "file://" + absPath
-	sourceType := "local"
+	sourceType := string(source.Local)
 
 	// Determine source name: prefer explicit parameter, then --name flag, then filepath.Base
 	if sourceName == "" {
@@ -1022,7 +1022,7 @@ func determineSourceInfo(parsed *source.ParsedSource, localPath string) (string,
 		fileURL := "file://" + absPath
 
 		if info.IsDir() {
-			return "local", fileURL, nil
+			return string(source.Local), fileURL, nil
 		}
 		return "file", fileURL, nil
 
