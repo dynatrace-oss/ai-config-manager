@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -353,6 +354,10 @@ func detectRemovedForSource(src *repomanifest.Source, sourcePath, repoPath strin
 	// previously imported resource (orphan detection for filter changes).
 	if len(src.Include) > 0 {
 		mm, err := pattern.NewMultiMatcher(src.Include)
+		if err != nil {
+			slog.Warn("invalid include patterns in source, skipping include filter for orphan detection",
+				"source", src.Name, "error", err)
+		}
 		if err == nil {
 			for resType, typeSet := range sourceResources {
 				for name := range typeSet {

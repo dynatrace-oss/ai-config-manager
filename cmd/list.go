@@ -97,7 +97,7 @@ See also:
 					return fmt.Errorf("invalid pattern '%s': %w", args[0], err)
 				}
 
-				// Filter packages by pattern
+				// Filter packages by pattern and source
 				var filteredPackages []repo.PackageInfo
 				for _, pkg := range packages {
 					// Create a temporary resource for matching
@@ -106,6 +106,13 @@ See also:
 						Name: pkg.Name,
 					}
 					if matcher.Match(&tempRes) {
+						// Apply source filter if specified
+						if sourceFilterFlag != "" {
+							meta, err := manager.GetMetadata(pkg.Name, resource.PackageType)
+							if err != nil || meta.SourceName != sourceFilterFlag {
+								continue
+							}
+						}
 						filteredPackages = append(filteredPackages, pkg)
 					}
 				}
@@ -210,6 +217,15 @@ See also:
 				}
 			}
 			resources = filtered
+
+			var filteredPackages []repo.PackageInfo
+			for _, pkg := range packages {
+				meta, err := manager.GetMetadata(pkg.Name, resource.PackageType)
+				if err == nil && meta.SourceName == sourceFilterFlag {
+					filteredPackages = append(filteredPackages, pkg)
+				}
+			}
+			packages = filteredPackages
 		}
 
 		// Handle empty results
