@@ -2,6 +2,7 @@
 
 [![Build Status](https://github.com/dynatrace-oss/ai-config-manager/actions/workflows/build.yml/badge.svg)](https://github.com/dynatrace-oss/ai-config-manager/actions/workflows/build.yml)
 [![codecov](https://codecov.io/gh/dynatrace-oss/ai-config-manager/branch/main/graph/badge.svg)](https://codecov.io/gh/dynatrace-oss/ai-config-manager)
+[![Go Report Card](https://goreportcard.com/badge/github.com/dynatrace-oss/ai-config-manager/v3)](https://goreportcard.com/report/github.com/dynatrace-oss/ai-config-manager/v3)
 [![Release](https://img.shields.io/github/v/release/dynatrace-oss/ai-config-manager)](https://github.com/dynatrace-oss/ai-config-manager/releases)
 [![License](https://img.shields.io/github/license/dynatrace-oss/ai-config-manager)](https://github.com/dynatrace-oss/ai-config-manager/blob/main/LICENSE)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/dynatrace-oss/ai-config-manager)](https://github.com/dynatrace-oss/ai-config-manager/blob/main/go.mod)
