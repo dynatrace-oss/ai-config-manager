@@ -88,6 +88,27 @@ func (m syncOutputMode) detailed() bool {
 	return m.format == output.Table && m.verbose
 }
 
+func buildSourceDisplayNames(sources []*repomanifest.Source) map[string]string {
+	displayNames := make(map[string]string, len(sources)*2)
+	for _, src := range sources {
+		if src == nil || src.Name == "" {
+			continue
+		}
+		displayNames[src.Name] = src.Name
+		if src.ID != "" {
+			displayNames[src.ID] = src.Name
+		}
+	}
+	return displayNames
+}
+
+func resolveSourceDisplayName(sourceKey string, displayNames map[string]string) string {
+	if name, ok := displayNames[sourceKey]; ok && name != "" {
+		return name
+	}
+	return sourceKey
+}
+
 // collectResourcesBySource returns a map of source identifier -> []resourceInfo
 // for all resources in the repo that have a source assigned.
 // This is used before sync to build a pre-sync inventory, enabling orphan detection
@@ -493,7 +514,7 @@ func detectRemovedForSource(src *repomanifest.Source, sourcePath, repoPath strin
 
 // removeOrphanedResources removes resources that are no longer present in their sources,
 // or prints a dry-run preview. Returns the list of successfully removed resources.
-func removeOrphanedResources(manager *repo.Manager, removedResources map[string][]resourceInfo, mode syncOutputMode) ([]removedResource, []string) {
+func removeOrphanedResources(manager *repo.Manager, removedResources map[string][]resourceInfo, sourceDisplayNames map[string]string, mode syncOutputMode) ([]removedResource, []string) {
 	totalToRemove := 0
 	for _, resources := range removedResources {
 		totalToRemove += len(resources)
@@ -504,30 +525,41 @@ func removeOrphanedResources(manager *repo.Manager, removedResources map[string]
 	}
 
 	warnings := []string{"removed resources may have active project installations; run 'aimgr repair' in affected projects if needed"}
+	if mode.human() {
+		fmt.Fprintf(os.Stdout, "\n⚠ Removed resources may have active project installations.\n")
+		fmt.Fprintf(os.Stdout, "  Run 'aimgr repair' in affected projects to clean up broken symlinks.\n\n")
+		warnings = nil
+	}
 
 	if syncDryRunFlag {
-		if mode.detailed() {
+		if mode.human() {
 			fmt.Printf("\nWould remove %d resource(s) no longer in sources:\n", totalToRemove)
 			for sourceKey, resources := range removedResources {
+				displayName := resolveSourceDisplayName(sourceKey, sourceDisplayNames)
 				for _, res := range resources {
-					fmt.Printf("  - %s/%s (from %s)\n", res.Type, res.Name, sourceKey)
+					fmt.Printf("  - %s/%s (from %s)\n", res.Type, res.Name, displayName)
 				}
 			}
 		}
 		return nil, warnings
 	}
 
-	if mode.detailed() {
+	if mode.human() {
 		fmt.Printf("Removing %d resource(s) no longer in sources:\n", totalToRemove)
 	}
 	var removed []removedResource
 	for sourceKey, resources := range removedResources {
+		displayName := resolveSourceDisplayName(sourceKey, sourceDisplayNames)
 		for _, res := range resources {
-			if mode.detailed() {
-				fmt.Printf("  - %s/%s (from %s)\n", res.Type, res.Name, sourceKey)
+			if mode.human() {
+				fmt.Printf("  - %s/%s (from %s)\n", res.Type, res.Name, displayName)
 			}
 			if err := manager.Remove(res.Name, res.Type); err != nil {
-				warnings = append(warnings, fmt.Sprintf("failed to remove %s/%s from %s: %v", res.Type, res.Name, sourceKey, err))
+				if mode.human() {
+					fmt.Printf("  ⚠ Warning: failed to remove %s/%s from %s: %v\n", res.Type, res.Name, displayName, err)
+				} else {
+					warnings = append(warnings, fmt.Sprintf("failed to remove %s/%s from %s: %v", res.Type, res.Name, displayName, err))
+				}
 			} else {
 				removed = append(removed, removedResource{
 					Name:   res.Name,
@@ -537,7 +569,7 @@ func removeOrphanedResources(manager *repo.Manager, removedResources map[string]
 			}
 		}
 	}
-	if mode.detailed() {
+	if mode.human() {
 		fmt.Printf("✓ Removed %d resource(s)\n", len(removed))
 	}
 	return removed, warnings
@@ -599,8 +631,6 @@ func syncSaveMetadata(manager *repo.Manager, metadata *sourcemetadata.SourceMeta
 // printSyncOutputTable prints compact table output (one line per source) plus summary.
 // When verbose is true, it also prints full per-resource tables for each source.
 func printSyncOutputTable(so *syncOutput, verbose bool) {
-	fmt.Printf("Syncing from %d configured source(s)...\n\n", so.Summary.SourcesTotal)
-
 	for _, src := range so.Sources {
 		modeLabel := src.Mode
 		if src.Failed {
@@ -696,6 +726,14 @@ func runSync(cmd *cobra.Command, args []string) error {
 		return formatErr
 	}
 	mode := syncOutputMode{format: format, verbose: syncVerboseFlag}
+	if mode.human() {
+		fmt.Printf("Syncing from %d configured source(s)...\n", len(manifest.Sources))
+		if syncDryRunFlag {
+			fmt.Println("Mode: DRY RUN (preview only)")
+		}
+		fmt.Println()
+	}
+	sourceDisplayNames := buildSourceDisplayNames(manifest.Sources)
 
 	// Set flags for the duration of the sync operation
 	originalForceFlag := forceFlag
@@ -802,7 +840,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 	}
 
 	// Remove orphaned resources (bmz1.3)
-	removed, removalWarnings := removeOrphanedResources(manager, internalResult.removedResources, mode)
+	removed, removalWarnings := removeOrphanedResources(manager, internalResult.removedResources, sourceDisplayNames, mode)
 	warnings = append(warnings, removalWarnings...)
 
 	// Build the complete sync output struct

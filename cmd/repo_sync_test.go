@@ -1443,6 +1443,64 @@ func TestPrintSyncOutputTable_CompactIncludesRemovedCounts(t *testing.T) {
 	}
 }
 
+func TestResolveSourceDisplayName_PrefersManifestName(t *testing.T) {
+	displayNames := buildSourceDisplayNames([]*repomanifest.Source{{
+		Name: "open-coder",
+		ID:   "src-c7b86a375511",
+	}})
+
+	got := resolveSourceDisplayName("src-c7b86a375511", displayNames)
+	if got != "open-coder" {
+		t.Fatalf("resolveSourceDisplayName() = %q, want %q", got, "open-coder")
+	}
+}
+
+func TestResolveSourceDisplayName_FallsBackToSourceKey(t *testing.T) {
+	got := resolveSourceDisplayName("src-unknown", map[string]string{})
+	if got != "src-unknown" {
+		t.Fatalf("resolveSourceDisplayName() = %q, want %q", got, "src-unknown")
+	}
+}
+
+func TestRemoveOrphanedResources_UsesFriendlySourceNamesInHumanOutput(t *testing.T) {
+	repoPath := t.TempDir()
+	manager := repo.NewManagerWithPath(repoPath)
+
+	cmdDir := filepath.Join(repoPath, "commands")
+	if err := os.MkdirAll(cmdDir, 0755); err != nil {
+		t.Fatalf("failed to create commands dir: %v", err)
+	}
+	cmdPath := filepath.Join(cmdDir, "demo.md")
+	if err := os.WriteFile(cmdPath, []byte("---\ndescription: demo\n---\n# demo"), 0644); err != nil {
+		t.Fatalf("failed to write command file: %v", err)
+	}
+
+	stdout, stderr := captureOutput(t, func() {
+		removed, warnings := removeOrphanedResources(
+			manager,
+			map[string][]resourceInfo{"src-c7b86a375511": {{Name: "demo", Type: resource.Command}}},
+			map[string]string{"src-c7b86a375511": "open-coder"},
+			syncOutputMode{format: output.Table},
+		)
+		if len(removed) != 1 {
+			t.Fatalf("expected 1 removed resource, got %d", len(removed))
+		}
+		if len(warnings) != 0 {
+			t.Fatalf("expected human-mode warnings to be printed instead of returned, got %v", warnings)
+		}
+	})
+
+	if !strings.Contains(stdout, "from open-coder") {
+		t.Fatalf("expected friendly source name in output, got:\n%s", stdout)
+	}
+	if strings.Contains(stdout, "src-c7b86a375511") {
+		t.Fatalf("expected source id to be hidden when name available, got:\n%s", stdout)
+	}
+	if stderr != "" {
+		t.Fatalf("expected no stderr output, got:\n%s", stderr)
+	}
+}
+
 func TestRunSync_JSONOutputIsSingleDocument(t *testing.T) {
 	source1 := createTestSource(t)
 	sources := []*repomanifest.Source{{Name: "test-source-1", Path: source1}}
@@ -1481,6 +1539,35 @@ func TestRunSync_JSONOutputIsSingleDocument(t *testing.T) {
 	}
 	if len(got.Sources) != 1 {
 		t.Fatalf("expected one source result, got %d", len(got.Sources))
+	}
+}
+
+func TestRunSync_TableModePrintsImmediateStartupBanner(t *testing.T) {
+	source1 := createTestSource(t)
+	sources := []*repomanifest.Source{{Name: "test-source-1", Path: source1}}
+	_, cleanup := setupTestManifest(t, sources)
+	defer cleanup()
+
+	oldFormat := syncFormatFlag
+	oldVerbose := syncVerboseFlag
+	syncFormatFlag = "table"
+	syncVerboseFlag = false
+	defer func() {
+		syncFormatFlag = oldFormat
+		syncVerboseFlag = oldVerbose
+	}()
+
+	stdout, stderr := captureOutput(t, func() {
+		if err := runSync(syncCmd, []string{}); err != nil {
+			t.Fatalf("runSync failed: %v", err)
+		}
+	})
+
+	if !strings.HasPrefix(stdout, "Syncing from 1 configured source(s)...") {
+		t.Fatalf("expected immediate startup banner at beginning of output, got:\n%s", stdout)
+	}
+	if stderr != "" {
+		t.Fatalf("expected no stderr output, got:\n%s", stderr)
 	}
 }
 
