@@ -183,7 +183,7 @@ See [Git Tracking](git-tracking.md) for details on how aimgr uses Git.
 - [Workspace Caching](workspace-caching.md) - Details on .workspace/ cache
 - [Git Tracking](git-tracking.md) - How aimgr uses Git internally
 
-## `repo init` vs `repo apply` (v1 contract)
+## `repo init` vs `repo show-manifest` / `repo apply-manifest` (v1 contract)
 
 This section documents command boundaries for shareable manifests.
 
@@ -192,7 +192,11 @@ This section documents command boundaries for shareable manifests.
   - Creates repository directories, git repo, `.gitignore`, and initial `ai.repo.yaml`
   - Does **not** consume external manifests
 
-- `aimgr repo apply <path-or-url>`
+- `aimgr repo show-manifest`
+  - Reads and prints the current local `ai.repo.yaml`
+  - Does not modify repository state
+
+- `aimgr repo apply-manifest <path-or-url>`
   - Loads a manifest from `<path-or-url>` and merges sources into local `ai.repo.yaml`
   - v1 accepts only explicit `ai.repo.yaml` inputs:
     1. local filesystem path to `ai.repo.yaml`
@@ -208,10 +212,10 @@ This section documents command boundaries for shareable manifests.
 `ai.repo.yaml` used for sharing should contain portable source definitions only.
 
 - Internal/generated `sources[].id` values are local-only state
-- `id` may exist in local persisted manifests, but `repo apply` must not require it in input
+- `id` may exist in local persisted manifests, but `repo apply-manifest` must not require it in input
 - Source state such as sync timestamps remains in `.metadata/sources.json`
 
-### Apply merge rules (v1)
+### apply-manifest merge rules (v1)
 
 When applying an incoming manifest to the local manifest:
 
@@ -224,7 +228,7 @@ When applying an incoming manifest to the local manifest:
 
 Incoming manifests with duplicate source names are invalid and rejected.
 
-### Relative path resolution for apply
+### Relative path resolution for apply-manifest
 
 - **Local manifest input** (`./ai.repo.yaml`): resolve relative `path` entries against the manifest file directory
 - **Remote HTTP(S) manifest input**: reject relative `path` entries in v1 (receiver-local filesystem target is ambiguous)
@@ -235,7 +239,8 @@ Guidance: for remote/shared manifests, prefer `url` sources.
 ### Concrete v1 apply examples
 
 ```bash
-aimgr repo apply ./ai.repo.yaml
-aimgr repo apply /tmp/team/ai.repo.yaml
-aimgr repo apply https://example.com/team/ai.repo.yaml
+aimgr repo show-manifest
+aimgr repo apply-manifest ./ai.repo.yaml
+aimgr repo apply-manifest /tmp/team/ai.repo.yaml
+aimgr repo apply-manifest https://example.com/team/ai.repo.yaml
 ```

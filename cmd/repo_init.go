@@ -21,12 +21,13 @@ This command:
 Scope note:
   - repo init is local bootstrap only
   - it does not load or merge external manifest files
-  - shared manifests are handled by repo apply <path-or-url>
+	  - shared manifests are handled by repo apply-manifest <path-or-url>
 
 Fresh setup guidance:
   - run repo init when you want an empty local repository first
-  - run repo apply <path-or-url> when bootstrapping from a shared manifest
-    (repo apply initializes automatically if the repo does not exist)
+	  - run repo apply-manifest <path-or-url> when bootstrapping from a shared manifest
+	    (repo apply-manifest initializes automatically if the repo does not exist)
+	  - run repo show-manifest to inspect the current local ai.repo.yaml
 
 The repository location is determined by (in order of precedence):
   1. AIMGR_REPO_PATH environment variable

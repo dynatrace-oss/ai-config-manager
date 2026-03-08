@@ -8,6 +8,9 @@
 {"issue_id":"ai-config-manager-4ao.5","label":"marked-for-compaction"}
 {"issue_id":"ai-config-manager-4ao.6","label":"marked-for-compaction"}
 {"issue_id":"ai-config-manager-4ao.7","label":"marked-for-compaction"}
+{"issue_id":"ai-config-manager-efi","label":"area:docs"}
+{"issue_id":"ai-config-manager-efi","label":"area:repo"}
+{"issue_id":"ai-config-manager-efi","label":"area:ux"}
 {"issue_id":"ai-config-manager-v2a","label":"area:manifest"}
 {"issue_id":"ai-config-manager-v2a","label":"area:repo"}
 {"issue_id":"ai-config-manager-v2a.1","label":"area:manifest"}

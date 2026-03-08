@@ -170,19 +170,20 @@ sources:
 
 ---
 
-## Sharing source configuration with `ai.repo.yaml` (`repo apply` v1)
+## Sharing source configuration with `ai.repo.yaml` (`show-manifest` / `apply-manifest` v1)
 
-Use `aimgr repo apply <path-or-url>` to load and merge a shared manifest into your local repository configuration.
+Use `aimgr repo show-manifest` to read the current local `ai.repo.yaml`, and `aimgr repo apply-manifest <path-or-url>` to merge another manifest into that same local file.
 
 ### Command responsibilities
 
 - `aimgr repo init`: local repository bootstrap only (create repo layout, git, initial `ai.repo.yaml`)
-- `aimgr repo apply <path-or-url>`: load a manifest and merge its sources into local `ai.repo.yaml` (auto-initializes if needed)
-- Deferred for future versions: export/lockfile workflows (not part of `repo apply` v1)
+- `aimgr repo show-manifest`: print the current local `ai.repo.yaml`
+- `aimgr repo apply-manifest <path-or-url>`: load a manifest and merge its sources into local `ai.repo.yaml` (auto-initializes if needed)
+- Deferred for future versions: export/lockfile workflows (not part of `repo apply-manifest` v1)
 
-### Accepted `repo apply` inputs in v1
+### Accepted `repo apply-manifest` inputs in v1
 
-`repo apply` accepts only explicit manifest files:
+`repo apply-manifest` accepts only explicit manifest files:
 
 1. Local file path to `ai.repo.yaml`
 2. HTTP(S) URL pointing directly to `ai.repo.yaml`
@@ -190,9 +191,10 @@ Use `aimgr repo apply <path-or-url>` to load and merge a shared manifest into yo
 Examples:
 
 ```bash
-aimgr repo apply ./ai.repo.yaml
-aimgr repo apply /tmp/team/ai.repo.yaml
-aimgr repo apply https://example.com/platform/ai.repo.yaml
+aimgr repo show-manifest
+aimgr repo apply-manifest ./ai.repo.yaml
+aimgr repo apply-manifest /tmp/team/ai.repo.yaml
+aimgr repo apply-manifest https://example.com/platform/ai.repo.yaml
 ```
 
 Not supported in v1:
@@ -206,7 +208,7 @@ Fresh repository bootstrap from a shared manifest:
 
 ```bash
 # No prior repo init required
-aimgr repo apply ./ai.repo.yaml
+aimgr repo apply-manifest ./ai.repo.yaml
 aimgr repo sync
 ```
 
@@ -214,7 +216,7 @@ Merge into an existing repository with local sources:
 
 ```bash
 # Existing ai.repo.yaml already contains local/team sources
-aimgr repo apply https://example.com/platform/ai.repo.yaml
+aimgr repo apply-manifest https://example.com/platform/ai.repo.yaml
 aimgr repo sync
 ```
 
@@ -253,7 +255,7 @@ Rules:
 
 ### Merge and conflict behavior
 
-When applying a manifest onto the local `ai.repo.yaml`:
+When applying a manifest onto the local `ai.repo.yaml` with `repo apply-manifest`:
 
 - **New source name** → add source
 - **Same source name + identical definition** (`path/url/ref/subpath/include`) → no-op (idempotent)

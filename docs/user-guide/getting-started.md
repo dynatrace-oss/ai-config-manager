@@ -29,13 +29,14 @@ If your team publishes an `ai.repo.yaml`, you can bootstrap in one command:
 
 ```bash
 # Local manifest file
-aimgr repo apply ./ai.repo.yaml
+aimgr repo apply-manifest ./ai.repo.yaml
 
 # Remote manifest URL
-aimgr repo apply https://example.com/platform/ai.repo.yaml
+aimgr repo apply-manifest https://example.com/platform/ai.repo.yaml
 ```
 
-`repo apply` will auto-initialize a fresh repository when needed, then merge sources into local `ai.repo.yaml`.
+`repo apply-manifest` will auto-initialize a fresh repository when needed, then merge sources into local `ai.repo.yaml`.
+Use `aimgr repo show-manifest` to print that same local file.
 
 ---
 
@@ -80,7 +81,7 @@ aimgr repo init
 
 This creates the repository directory and `ai.repo.yaml` manifest.
 
-If you already have a shared manifest, use `aimgr repo apply <path-or-url>` instead.
+If you already have a shared manifest, use `aimgr repo apply-manifest <path-or-url>` instead.
 
 ### 3. Add Sources
 
@@ -119,9 +120,12 @@ aimgr repo add local:~/my-resources/          # Local (symlinked)
 aimgr repo add gh:owner/repo            # GitHub (copied)
 aimgr repo add gh:owner/repo@v1.0.0     # Specific version
 
-# Or merge sources from a shared manifest
-aimgr repo apply ./ai.repo.yaml
-aimgr repo apply https://example.com/platform/ai.repo.yaml
+# Or merge sources from a shared manifest into local ai.repo.yaml
+aimgr repo apply-manifest ./ai.repo.yaml
+aimgr repo apply-manifest https://example.com/platform/ai.repo.yaml
+
+# Show the current local ai.repo.yaml
+aimgr repo show-manifest
 
 # Update from sources
 aimgr repo sync

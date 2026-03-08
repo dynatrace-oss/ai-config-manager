@@ -37,3 +37,4 @@
 {"created_at":"2026-03-08T12:05:44Z","created_by":"Hans Kohlreiter","depends_on_id":"ai-config-manager-v2a.6","issue_id":"ai-config-manager-v2a.5","type":"blocks"}
 {"created_at":"2026-03-08T12:05:44Z","created_by":"Hans Kohlreiter","depends_on_id":"ai-config-manager-v2a","issue_id":"ai-config-manager-v2a.6","type":"parent-child"}
 {"created_at":"2026-03-08T12:05:44Z","created_by":"Hans Kohlreiter","depends_on_id":"ai-config-manager-v2a.1","issue_id":"ai-config-manager-v2a.6","type":"blocks"}
+{"created_at":"2026-03-08T13:04:12Z","created_by":"Hans Kohlreiter","depends_on_id":"ai-config-manager-v2a.5","issue_id":"ai-config-manager-y1o","type":"discovered-from"}

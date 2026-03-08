@@ -14,15 +14,16 @@ import (
 )
 
 func TestRepoApplyCommandHelpText(t *testing.T) {
-	if repoApplyCmd.Use != "apply <path-or-url>" {
-		t.Fatalf("unexpected Use: %s", repoApplyCmd.Use)
+	if repoApplyManifestCmd.Use != "apply-manifest <path-or-url>" {
+		t.Fatalf("unexpected Use: %s", repoApplyManifestCmd.Use)
 	}
 
-	help := repoApplyCmd.Long + "\n" + repoApplyCmd.Example
+	help := repoApplyManifestCmd.Long + "\n" + repoApplyManifestCmd.Example
 	for _, expected := range []string{
 		"repo init",
-		"repo apply <path-or-url>",
-		"aimgr repo apply ./ai.repo.yaml",
+		"repo show-manifest",
+		"repo apply-manifest <path-or-url>",
+		"aimgr repo apply-manifest ./ai.repo.yaml",
 		"https://example.com/platform/ai.repo.yaml",
 		"--include-mode preserve",
 	} {
@@ -47,8 +48,8 @@ sources:
 	}
 
 	withApplyFlags(false, string(repomanifest.IncludeMergeReplace), func() {
-		if err := runApply(repoApplyCmd, []string{manifestPath}); err != nil {
-			t.Fatalf("runApply() error = %v", err)
+		if err := runApplyManifest(repoApplyManifestCmd, []string{manifestPath}); err != nil {
+			t.Fatalf("runApplyManifest() error = %v", err)
 		}
 	})
 
@@ -83,8 +84,8 @@ sources:
 	defer server.Close()
 
 	withApplyFlags(false, string(repomanifest.IncludeMergeReplace), func() {
-		if err := runApply(repoApplyCmd, []string{server.URL + "/team/ai.repo.yaml"}); err != nil {
-			t.Fatalf("runApply() error = %v", err)
+		if err := runApplyManifest(repoApplyManifestCmd, []string{server.URL + "/team/ai.repo.yaml"}); err != nil {
+			t.Fatalf("runApplyManifest() error = %v", err)
 		}
 	})
 
@@ -114,10 +115,10 @@ sources:
 	}
 
 	withApplyFlags(false, string(repomanifest.IncludeMergeReplace), func() {
-		if err := runApply(repoApplyCmd, []string{manifestPath}); err != nil {
+		if err := runApplyManifest(repoApplyManifestCmd, []string{manifestPath}); err != nil {
 			t.Fatalf("first apply error = %v", err)
 		}
-		if err := runApply(repoApplyCmd, []string{manifestPath}); err != nil {
+		if err := runApplyManifest(repoApplyManifestCmd, []string{manifestPath}); err != nil {
 			t.Fatalf("second apply error = %v", err)
 		}
 	})
@@ -157,7 +158,7 @@ sources:
 	}
 
 	withApplyFlags(false, string(repomanifest.IncludeMergePreserve), func() {
-		if err := runApply(repoApplyCmd, []string{incomingPath}); err != nil {
+		if err := runApplyManifest(repoApplyManifestCmd, []string{incomingPath}); err != nil {
 			t.Fatalf("preserve apply error = %v", err)
 		}
 	})
@@ -170,7 +171,7 @@ sources:
 	}
 
 	withApplyFlags(false, string(repomanifest.IncludeMergeReplace), func() {
-		if err := runApply(repoApplyCmd, []string{incomingPath}); err != nil {
+		if err := runApplyManifest(repoApplyManifestCmd, []string{incomingPath}); err != nil {
 			t.Fatalf("replace apply error = %v", err)
 		}
 	})
@@ -206,7 +207,7 @@ sources:
 	}
 
 	withApplyFlags(false, string(repomanifest.IncludeMergeReplace), func() {
-		err := runApply(repoApplyCmd, []string{incomingPath})
+		err := runApplyManifest(repoApplyManifestCmd, []string{incomingPath})
 		if err == nil {
 			t.Fatal("expected conflict error, got nil")
 		}
@@ -259,7 +260,7 @@ sources:
 
 	output := captureStdout(t, func() {
 		withApplyFlags(true, string(repomanifest.IncludeMergeReplace), func() {
-			err := runApply(repoApplyCmd, []string{incomingPath})
+			err := runApplyManifest(repoApplyManifestCmd, []string{incomingPath})
 			if err == nil {
 				t.Fatal("expected conflict error in dry-run, got nil")
 			}

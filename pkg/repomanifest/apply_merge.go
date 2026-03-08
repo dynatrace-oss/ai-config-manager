@@ -23,7 +23,7 @@ const (
 	ApplyActionConflict ApplyAction = "conflict"
 )
 
-// ApplyMergeOptions configures merge behavior for repo apply.
+// ApplyMergeOptions configures merge behavior for repo apply-manifest.
 type ApplyMergeOptions struct {
 	IncludeMode IncludeMergeMode
 }
@@ -81,7 +81,7 @@ func (r *ApplyMergeReport) HasConflicts() bool {
 }
 
 // MergeForApply merges incoming sources into a copy of current manifest using
-// repo apply semantics.
+// repo apply-manifest semantics.
 func MergeForApply(current, incoming *Manifest, opts ApplyMergeOptions) (*Manifest, *ApplyMergeReport, error) {
 	if current == nil {
 		return nil, nil, fmt.Errorf("current manifest is nil")

@@ -149,7 +149,7 @@ aimgr repo add gh:owner/repo --filter "web-*"
 ```
 
 The same pattern syntax is used in shared `ai.repo.yaml` manifests via `sources[].include`
-(for `aimgr repo apply <path-or-url>`):
+(for `aimgr repo apply-manifest <path-or-url>`):
 
 ```yaml
 version: 1
@@ -167,11 +167,11 @@ pattern matches.
 After applying and syncing:
 
 ```bash
-aimgr repo apply ./ai.repo.yaml
+aimgr repo apply-manifest ./ai.repo.yaml
 aimgr repo sync
 ```
 
-`repo sync` continues using the `sources[].include` filters persisted by `repo apply`.
+`repo sync` continues using the `sources[].include` filters persisted by `repo apply-manifest`.
 
 **Remove with pattern:**
 ```bash

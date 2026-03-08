@@ -13,15 +13,19 @@ var (
 	repoApplyIncludeModeFlag string
 )
 
-// repoApplyCmd represents the apply command.
-var repoApplyCmd = &cobra.Command{
-	Use:   "apply <path-or-url>",
-	Short: "Apply and merge sources from a shared ai.repo.yaml",
-	Long: `Load and merge sources from a shared ai.repo.yaml into the local repository manifest.
+// repoApplyManifestCmd represents the apply-manifest command.
+var repoApplyManifestCmd = &cobra.Command{
+	Use:   "apply-manifest <path-or-url>",
+	Short: "Merge an external manifest into the local ai.repo.yaml",
+	Long: `Read an external ai.repo.yaml and merge its sources into the local ai.repo.yaml.
 
 Accepted inputs in v1:
   - Local path to ai.repo.yaml
   - HTTP(S) URL that points directly to ai.repo.yaml
+
+Manifest relationship:
+  - repo show-manifest reads and prints the current local ai.repo.yaml
+  - repo apply-manifest <path-or-url> reads another ai.repo.yaml and merges it into that same local file
 
 Merge behavior:
   - New source name: added
@@ -30,29 +34,32 @@ Merge behavior:
   - Same location with different include filters: replace or preserve (configurable)
 
 Fresh repository behavior:
-  - apply auto-initializes the local repository (same bootstrap as repo init)
+  - apply-manifest auto-initializes the local repository (same bootstrap as repo init)
   - in --dry-run mode, bootstrap is previewed and not persisted
 
 Relationship to repo init:
   - repo init bootstraps local repository structure only
-  - repo apply <path-or-url> bootstraps if needed, then merges shared sources`,
-	Example: `  # Apply a manifest from local disk
-  aimgr repo apply ./ai.repo.yaml
-  aimgr repo apply /tmp/team/ai.repo.yaml
+	  - repo apply-manifest <path-or-url> bootstraps if needed, then merges manifest content into local ai.repo.yaml`,
+	Example: `  # Show the current local manifest
+	  aimgr repo show-manifest
 
-  # Apply a shared manifest from URL
-  aimgr repo apply https://example.com/platform/ai.repo.yaml
+	  # Apply a manifest from local disk
+	  aimgr repo apply-manifest ./ai.repo.yaml
+	  aimgr repo apply-manifest /tmp/team/ai.repo.yaml
 
-  # Preview merge actions without writing
-  aimgr repo apply ./ai.repo.yaml --dry-run
+	  # Apply a shared manifest from URL
+	  aimgr repo apply-manifest https://example.com/platform/ai.repo.yaml
 
-  # Preserve existing include filters when source location matches
-  aimgr repo apply ./ai.repo.yaml --include-mode preserve`,
+	  # Preview merge actions without writing
+	  aimgr repo apply-manifest ./ai.repo.yaml --dry-run
+
+	  # Preserve existing include filters when source location matches
+	  aimgr repo apply-manifest ./ai.repo.yaml --include-mode preserve`,
 	Args: cobra.ExactArgs(1),
-	RunE: runApply,
+	RunE: runApplyManifest,
 }
 
-func runApply(cmd *cobra.Command, args []string) error {
+func runApplyManifest(cmd *cobra.Command, args []string) error {
 	input := args[0]
 
 	mgr, err := NewManagerWithLogLevel()
@@ -128,8 +135,8 @@ func printApplyReport(report *repomanifest.ApplyMergeReport, dryRun bool) {
 }
 
 func init() {
-	repoCmd.AddCommand(repoApplyCmd)
+	repoCmd.AddCommand(repoApplyManifestCmd)
 
-	repoApplyCmd.Flags().BoolVar(&repoApplyDryRunFlag, "dry-run", false, "Preview merge actions without writing ai.repo.yaml")
-	repoApplyCmd.Flags().StringVar(&repoApplyIncludeModeFlag, "include-mode", string(repomanifest.IncludeMergeReplace), "Include handling for same-location sources: replace or preserve")
+	repoApplyManifestCmd.Flags().BoolVar(&repoApplyDryRunFlag, "dry-run", false, "Preview merge actions without writing ai.repo.yaml")
+	repoApplyManifestCmd.Flags().StringVar(&repoApplyIncludeModeFlag, "include-mode", string(repomanifest.IncludeMergeReplace), "Include handling for same-location sources: replace or preserve")
 }

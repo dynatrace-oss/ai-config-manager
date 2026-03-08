@@ -197,10 +197,10 @@ func TestE2E_ApplyThenSyncPreservesIncludeFilters(t *testing.T) {
 		t.Fatalf("Failed to write apply manifest: %v", err)
 	}
 
-	// Apply should auto-initialize the repo and persist include filters.
-	stdout, stderr, err := runAimgrWithEnv(t, configPath, env, "repo", "apply", manifestPath)
+	// apply-manifest should auto-initialize the repo and persist include filters.
+	stdout, stderr, err := runAimgrWithEnv(t, configPath, env, "repo", "apply-manifest", manifestPath)
 	if err != nil {
-		t.Fatalf("repo apply failed: %v\nStdout: %s\nStderr: %s", err, stdout, stderr)
+		t.Fatalf("repo apply-manifest failed: %v\nStdout: %s\nStderr: %s", err, stdout, stderr)
 	}
 
 	appliedManifest, err := repomanifest.Load(repoPath)

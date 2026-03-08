@@ -13,7 +13,8 @@ func TestRepoInitHelpClarifiesApplyRelationship(t *testing.T) {
 	help := repoInitCmd.Long
 	for _, expected := range []string{
 		"repo init is local bootstrap only",
-		"repo apply <path-or-url>",
+		"repo apply-manifest <path-or-url>",
+		"repo show-manifest",
 		"bootstrapping from a shared manifest",
 	} {
 		if !strings.Contains(help, expected) {

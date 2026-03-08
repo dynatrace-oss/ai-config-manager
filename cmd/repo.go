@@ -13,6 +13,10 @@ var repoCmd = &cobra.Command{
 The repo command group provides subcommands for adding, removing, and listing
 resources (commands, skills, and agents) in the centralized aimgr repository.
 
+Manifest-oriented commands:
+  - repo show-manifest reads the current local ai.repo.yaml
+  - repo apply-manifest <path-or-url> merges another ai.repo.yaml into that same local file
+
 Use 'aimgr repo --help' to see all available subcommands.`,
 }
 
