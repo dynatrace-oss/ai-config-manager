@@ -14,7 +14,7 @@ Manage AI resources via `aimgr`. Resources live in `~/.local/share/ai-config/rep
 | Mutating (ask first) | Read-only (safe) |
 |---|---|
 | `install`, `uninstall`, `init`, `repair`, `clean` | `list`, `verify` |
-| `repo add`, `repo sync`, `repo remove` | `repo list`, `repo describe`, `repo info` |
+| `repo add`, `repo sync`, `repo remove`, `repo apply-manifest` | `repo list`, `repo describe`, `repo info`, `repo show-manifest` |
 | `repo repair`, `repo drop`, `repo prune` | `repo verify`, `repo add --dry-run` |
 
 ## Use Cases
@@ -22,7 +22,7 @@ Manage AI resources via `aimgr`. Resources live in `~/.local/share/ai-config/rep
 **UC1 — Install / Uninstall:** Install, verify, repair resources in a project. Covers `install`, `uninstall`, `list`, `verify`, `repair`, `clean`, `init`, `ai.package.yaml`.
 → [references/install-uninstall.md](references/install-uninstall.md)
 
-**UC2 — Manage Repository:** Add sources, sync, remove, validate, maintain the global repo. Covers all `repo` subcommands.
+**UC2 — Manage Repository:** Add sources, inspect or apply `ai.repo.yaml`, sync, remove, validate, maintain the global repo. Covers all `repo` subcommands.
 → [references/manage-repository.md](references/manage-repository.md)
 
 **UC3 — Discover & Recommend:** Scan project context, match against available resources, recommend relevant ones.

@@ -7,7 +7,7 @@ AI resources. Sources are tracked in `ai.repo.yaml` inside the repository.
 
 For project-level install/uninstall, see [install-uninstall.md](install-uninstall.md).
 
-**Sections:** [Safety](#️-mutating-operations-require-user-approval) · [Init](#initialize-repository) · [Add Sources](#add-sources) · [Sync](#sync-sources) · [Remove Sources](#remove-sources) · [Browse & Inspect](#browse--inspect) · [Validate](#validate-resources-for-developers) · [Verify & Repair](#verify--repair-repository) · [Nuclear Options](#nuclear-options) · [Troubleshooting](#troubleshooting)
+**Sections:** [Safety](#️-mutating-operations-require-user-approval) · [Init](#initialize-repository) · [Manifest Workflow](#manifest-workflow) · [Add Sources](#add-sources) · [Sync](#sync-sources) · [Remove Sources](#remove-sources) · [Browse & Inspect](#browse--inspect) · [Validate](#validate-resources-for-developers) · [Verify & Repair](#verify--repair-repository) · [Nuclear Options](#nuclear-options) · [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -16,6 +16,7 @@ For project-level install/uninstall, see [install-uninstall.md](install-uninstal
 **Always ask before running:**
 
 - `aimgr repo add` — imports resources from a source
+- `aimgr repo apply-manifest` — merges an external manifest into local `ai.repo.yaml`
 - `aimgr repo sync` — re-imports from all configured sources
 - `aimgr repo remove` — removes a source and its resources
 - `aimgr repo drop` — removes all resources or deletes repository
@@ -24,6 +25,7 @@ For project-level install/uninstall, see [install-uninstall.md](install-uninstal
 **Safe read-only operations:**
 
 - `aimgr repo list`, `aimgr repo info`, `aimgr repo describe`, `aimgr repo verify`
+- `aimgr repo show-manifest`
 
 ---
 
@@ -40,6 +42,42 @@ Idempotent — safe to run multiple times. Location determined by:
 1. `AIMGR_REPO_PATH` env var
 2. `repo.path` in `~/.config/aimgr/aimgr.yaml`
 3. Default: `~/.local/share/ai-config/repo/`
+
+---
+
+## Manifest Workflow
+
+`ai.repo.yaml` is the local repository manifest.
+
+```bash
+# Inspect the current local manifest
+aimgr repo show-manifest
+
+# Merge another manifest into that same local file
+aimgr repo apply-manifest ./ai.repo.yaml
+aimgr repo apply-manifest https://example.com/platform/ai.repo.yaml
+
+# Round-trip through stdin
+aimgr repo show-manifest | aimgr repo apply-manifest -
+```
+
+### Command roles
+
+- `aimgr repo init` — bootstrap an empty local repository and create `ai.repo.yaml`
+- `aimgr repo show-manifest` — read and print the current local `ai.repo.yaml`
+- `aimgr repo apply-manifest <path-or-url>` — read another manifest and merge it into the local `ai.repo.yaml`
+
+### Accepted `apply-manifest` inputs
+
+- local path to `ai.repo.yaml`
+- stdin via `-` or `/dev/stdin`
+- HTTP(S) URL pointing directly to `ai.repo.yaml`
+
+### Notes
+
+- `apply-manifest` is mutating, so ask before running it
+- direct stdin round-trips are supported
+- stdin and remote manifests reject relative `path:` sources because they have no safe local resolution base
 
 ---
 
@@ -100,7 +138,7 @@ sources:
     ref: v1.2.0
 ```
 
-Maintained automatically by `repo add` and `repo remove`.
+Maintained automatically by `repo add`, `repo remove`, and `repo apply-manifest`.
 
 ---
 
