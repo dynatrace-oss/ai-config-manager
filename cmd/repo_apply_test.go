@@ -24,6 +24,7 @@ func TestRepoApplyCommandHelpText(t *testing.T) {
 		"repo show-manifest",
 		"repo apply-manifest <path-or-url>",
 		"aimgr repo apply-manifest ./ai.repo.yaml",
+		"aimgr repo apply-manifest -",
 		"https://example.com/platform/ai.repo.yaml",
 		"--include-mode preserve",
 	} {
@@ -282,6 +283,38 @@ sources:
 	}
 }
 
+func TestRepoApply_StdinRoundTripNoChanges(t *testing.T) {
+	repoDir := t.TempDir()
+	t.Setenv("AIMGR_REPO_PATH", repoDir)
+
+	baseline := &repomanifest.Manifest{Version: 1, Sources: []*repomanifest.Source{{
+		Name: "team-tools",
+		URL:  "https://github.com/example/tools",
+	}}}
+	if err := baseline.Save(repoDir); err != nil {
+		t.Fatalf("failed to save baseline manifest: %v", err)
+	}
+
+	manifestBytes, err := os.ReadFile(filepath.Join(repoDir, repomanifest.ManifestFileName))
+	if err != nil {
+		t.Fatalf("failed to read baseline manifest: %v", err)
+	}
+
+	output := captureStdoutWithStdin(t, string(manifestBytes), func() {
+		withApplyFlags(false, string(repomanifest.IncludeMergeReplace), func() {
+			if err := runApplyManifest(repoApplyManifestCmd, []string{"-"}); err != nil {
+				t.Fatalf("stdin apply-manifest error = %v", err)
+			}
+		})
+	})
+
+	for _, expected := range []string{"added=0", "updated=0", "noop=1", "No changes to apply"} {
+		if !strings.Contains(output, expected) {
+			t.Fatalf("expected output to contain %q, got:\n%s", expected, output)
+		}
+	}
+}
+
 func withApplyFlags(dryRun bool, includeMode string, fn func()) {
 	oldDryRun := repoApplyDryRunFlag
 	oldIncludeMode := repoApplyIncludeModeFlag
@@ -313,4 +346,27 @@ func captureStdout(t *testing.T, fn func()) string {
 	var buf bytes.Buffer
 	_, _ = io.Copy(&buf, r)
 	return buf.String()
+}
+
+func captureStdoutWithStdin(t *testing.T, stdinContent string, fn func()) string {
+	t.Helper()
+
+	oldStdin := os.Stdin
+	stdinR, stdinW, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("failed to create stdin pipe: %v", err)
+	}
+	if _, err := io.WriteString(stdinW, stdinContent); err != nil {
+		_ = stdinW.Close()
+		_ = stdinR.Close()
+		t.Fatalf("failed to write stdin content: %v", err)
+	}
+	_ = stdinW.Close()
+	os.Stdin = stdinR
+	defer func() {
+		os.Stdin = oldStdin
+		_ = stdinR.Close()
+	}()
+
+	return captureStdout(t, fn)
 }

@@ -200,7 +200,8 @@ This section documents command boundaries for shareable manifests.
   - Loads a manifest from `<path-or-url>` and merges sources into local `ai.repo.yaml`
   - v1 accepts only explicit `ai.repo.yaml` inputs:
     1. local filesystem path to `ai.repo.yaml`
-    2. HTTP(S) URL directly to `ai.repo.yaml`
+    2. stdin via `-` or `/dev/stdin`
+    3. HTTP(S) URL directly to `ai.repo.yaml`
   - Bare repository URLs are out of scope in v1
 
 - Deferred (future work)
@@ -231,6 +232,7 @@ Incoming manifests with duplicate source names are invalid and rejected.
 ### Relative path resolution for apply-manifest
 
 - **Local manifest input** (`./ai.repo.yaml`): resolve relative `path` entries against the manifest file directory
+- **Stdin manifest input** (`-` or `/dev/stdin`): reject relative `path` entries in v1 (no manifest directory exists)
 - **Remote HTTP(S) manifest input**: reject relative `path` entries in v1 (receiver-local filesystem target is ambiguous)
 - Absolute `path` remains literal (usable for local-machine manifests)
 
@@ -241,6 +243,7 @@ Guidance: for remote/shared manifests, prefer `url` sources.
 ```bash
 aimgr repo show-manifest
 aimgr repo apply-manifest ./ai.repo.yaml
+aimgr repo show-manifest | aimgr repo apply-manifest -
 aimgr repo apply-manifest /tmp/team/ai.repo.yaml
 aimgr repo apply-manifest https://example.com/team/ai.repo.yaml
 ```

@@ -21,6 +21,7 @@ var repoApplyManifestCmd = &cobra.Command{
 
 Accepted inputs in v1:
   - Local path to ai.repo.yaml
+  - Stdin via - or /dev/stdin
   - HTTP(S) URL that points directly to ai.repo.yaml
 
 Manifest relationship:
@@ -49,6 +50,9 @@ Relationship to repo init:
 
 	  # Apply a shared manifest from URL
 	  aimgr repo apply-manifest https://example.com/platform/ai.repo.yaml
+
+	  # Pipe the current manifest back into apply-manifest (no-op round-trip)
+	  aimgr repo show-manifest | aimgr repo apply-manifest -
 
 	  # Preview merge actions without writing
 	  aimgr repo apply-manifest ./ai.repo.yaml --dry-run

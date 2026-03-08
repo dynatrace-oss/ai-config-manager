@@ -18,11 +18,12 @@ var windowsDrivePathPattern = regexp.MustCompile(`^[a-zA-Z]:[\\/]`)
 
 // LoadForApply loads a shareable manifest from either:
 //   - a local ai.repo.yaml path
+//   - stdin via "-" or "/dev/stdin"
 //   - an HTTP(S) URL that points directly to ai.repo.yaml
 //
 // For local manifests, relative source path values are resolved relative to the
-// manifest file directory. For remote manifests, relative source path values
-// are rejected because receiver-local resolution would be ambiguous.
+// manifest file directory. For remote and stdin manifests, relative source path
+// values are rejected because no safe receiver-local resolution exists.
 func LoadForApply(input string) (*Manifest, error) {
 	return loadForApplyWithClient(input, http.DefaultClient)
 }
@@ -41,8 +42,12 @@ func loadForApplyWithClient(input string, client *http.Client) (*Manifest, error
 		return loadRemoteForApply(parsedURL, client)
 	}
 
+	if isStdinManifestInput(input) {
+		return loadStdinForApply()
+	}
+
 	if parsedURL.Scheme != "" && !isWindowsDrivePath(input) {
-		return nil, fmt.Errorf("manifest input must be a local %s path or HTTP(S) URL", ManifestFileName)
+		return nil, fmt.Errorf("manifest input must be a local %s path, stdin (- or /dev/stdin), or HTTP(S) URL", ManifestFileName)
 	}
 
 	return loadLocalForApply(input)
@@ -78,6 +83,36 @@ func loadLocalForApply(input string) (*Manifest, error) {
 			continue
 		}
 		source.Path = filepath.Clean(filepath.Join(manifestDir, source.Path))
+	}
+
+	return manifest, nil
+}
+
+func isStdinManifestInput(input string) bool {
+	trimmed := strings.TrimSpace(input)
+	if trimmed == "-" {
+		return true
+	}
+
+	return filepath.Clean(trimmed) == "/dev/stdin"
+}
+
+func loadStdinForApply() (*Manifest, error) {
+	data, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read manifest from stdin: %w", err)
+	}
+
+	manifest, err := parseManifestYAML(data)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, source := range manifest.Sources {
+		if source.Path == "" || filepath.IsAbs(source.Path) {
+			continue
+		}
+		return nil, fmt.Errorf("stdin manifest source %q has relative path %q: relative path sources are not supported for stdin manifests", source.Name, source.Path)
 	}
 
 	return manifest, nil

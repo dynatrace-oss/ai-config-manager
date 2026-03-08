@@ -1,5 +1,8 @@
 {"issue_id":"ai-config-manager-15m","label":"area:sync"}
 {"issue_id":"ai-config-manager-15m","label":"area:workspace"}
+{"issue_id":"ai-config-manager-292","label":"area:docs"}
+{"issue_id":"ai-config-manager-292","label":"area:repo"}
+{"issue_id":"ai-config-manager-292","label":"area:ux"}
 {"issue_id":"ai-config-manager-4ao","label":"marked-for-compaction"}
 {"issue_id":"ai-config-manager-4ao.1","label":"marked-for-compaction"}
 {"issue_id":"ai-config-manager-4ao.2","label":"marked-for-compaction"}
@@ -11,6 +14,8 @@
 {"issue_id":"ai-config-manager-efi","label":"area:docs"}
 {"issue_id":"ai-config-manager-efi","label":"area:repo"}
 {"issue_id":"ai-config-manager-efi","label":"area:ux"}
+{"issue_id":"ai-config-manager-g7o","label":"area:repo"}
+{"issue_id":"ai-config-manager-g7o","label":"area:ux"}
 {"issue_id":"ai-config-manager-v2a","label":"area:manifest"}
 {"issue_id":"ai-config-manager-v2a","label":"area:repo"}
 {"issue_id":"ai-config-manager-v2a.1","label":"area:manifest"}

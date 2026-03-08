@@ -186,7 +186,8 @@ Use `aimgr repo show-manifest` to read the current local `ai.repo.yaml`, and `ai
 `repo apply-manifest` accepts only explicit manifest files:
 
 1. Local file path to `ai.repo.yaml`
-2. HTTP(S) URL pointing directly to `ai.repo.yaml`
+2. Stdin via `-` or `/dev/stdin`
+3. HTTP(S) URL pointing directly to `ai.repo.yaml`
 
 Examples:
 
@@ -194,6 +195,7 @@ Examples:
 aimgr repo show-manifest
 aimgr repo apply-manifest ./ai.repo.yaml
 aimgr repo apply-manifest /tmp/team/ai.repo.yaml
+aimgr repo show-manifest | aimgr repo apply-manifest -
 aimgr repo apply-manifest https://example.com/platform/ai.repo.yaml
 ```
 
@@ -267,6 +269,7 @@ Repeated apply of the same manifest should be idempotent.
 ### Relative path resolution
 
 - Applying a **local manifest file**: relative `path` values are resolved relative to the manifest file's directory
+- Applying a **stdin manifest** (`-` or `/dev/stdin`): relative `path` values are rejected in v1 (no manifest directory exists for resolution)
 - Applying a **remote HTTP(S) manifest**: relative `path` values are rejected in v1 (ambiguous on the receiver machine)
 - Absolute `path` values remain valid but are only practical for machine-local setups
 

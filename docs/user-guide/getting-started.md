@@ -38,6 +38,12 @@ aimgr repo apply-manifest https://example.com/platform/ai.repo.yaml
 `repo apply-manifest` will auto-initialize a fresh repository when needed, then merge sources into local `ai.repo.yaml`.
 Use `aimgr repo show-manifest` to print that same local file.
 
+You can also round-trip the manifest through stdin:
+
+```bash
+aimgr repo show-manifest | aimgr repo apply-manifest -
+```
+
 ---
 
 ## Installation

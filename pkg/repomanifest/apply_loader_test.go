@@ -1,6 +1,7 @@
 package repomanifest
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -75,9 +76,45 @@ func TestLoadForApply_InvalidScheme(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if !strings.Contains(err.Error(), "local ai.repo.yaml path or HTTP(S) URL") {
+	if !strings.Contains(err.Error(), "local ai.repo.yaml path, stdin (- or /dev/stdin), or HTTP(S) URL") {
 		t.Fatalf("unexpected error: %v", err)
 	}
+}
+
+func TestLoadForApply_StdinDash(t *testing.T) {
+	withStdin(t, "version: 1\nsources:\n  - name: stdin-source\n    url: https://github.com/example/tools\n", func() {
+		m, err := LoadForApply("-")
+		if err != nil {
+			t.Fatalf("LoadForApply() error = %v", err)
+		}
+		if len(m.Sources) != 1 || m.Sources[0].Name != "stdin-source" {
+			t.Fatalf("unexpected manifest from stdin: %+v", m.Sources)
+		}
+	})
+}
+
+func TestLoadForApply_StdinDevStdin(t *testing.T) {
+	withStdin(t, "version: 1\nsources:\n  - name: stdin-source\n    url: https://github.com/example/tools\n", func() {
+		m, err := LoadForApply("/dev/stdin")
+		if err != nil {
+			t.Fatalf("LoadForApply() error = %v", err)
+		}
+		if len(m.Sources) != 1 || m.Sources[0].Name != "stdin-source" {
+			t.Fatalf("unexpected manifest from /dev/stdin: %+v", m.Sources)
+		}
+	})
+}
+
+func TestLoadForApply_StdinRejectsRelativeSourcePath(t *testing.T) {
+	withStdin(t, "version: 1\nsources:\n  - name: stdin-path\n    path: ./resources\n", func() {
+		_, err := LoadForApply("-")
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if !strings.Contains(err.Error(), "relative path sources are not supported for stdin manifests") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
 }
 
 func TestLoadForApply_RemoteManifest(t *testing.T) {
@@ -148,4 +185,28 @@ sources:
 	if !strings.Contains(err.Error(), "relative path sources are not supported for remote manifests") {
 		t.Fatalf("unexpected error: %v", err)
 	}
+}
+
+func withStdin(t *testing.T, content string, fn func()) {
+	t.Helper()
+
+	oldStdin := os.Stdin
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("failed to create stdin pipe: %v", err)
+	}
+
+	if _, err := io.WriteString(w, content); err != nil {
+		_ = w.Close()
+		_ = r.Close()
+		t.Fatalf("failed to write stdin content: %v", err)
+	}
+	_ = w.Close()
+	os.Stdin = r
+	defer func() {
+		os.Stdin = oldStdin
+		_ = r.Close()
+	}()
+
+	fn()
 }
