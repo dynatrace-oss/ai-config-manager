@@ -155,20 +155,19 @@ type syncStats struct {
 }
 
 // parseSyncStats extracts sync statistics from aimgr output.
-// It looks for all summary lines (one per source) and sums them up.
-// Format: "Summary: X added, Y updated, Z failed, W skipped (N total)"
+// It supports both the legacy per-source summary lines and the current
+// compact sync output.
 func parseSyncStats(t *testing.T, output string) syncStats {
 	t.Helper()
 
 	stats := syncStats{}
 
-	// Look for ALL summary lines in output (sync has one per source)
-	// Format: "Summary: X added, Y updated, Z failed, W skipped (N total)"
-	summaryRegex := regexp.MustCompile(`Summary:\s*(\d+)\s+added,\s*(\d+)\s+updated,\s*(\d+)\s+failed,\s*(\d+)\s+skipped`)
-	allMatches := summaryRegex.FindAllStringSubmatch(output, -1)
+	// Legacy format (one summary line per source):
+	// "Summary: X added, Y updated, Z failed, W skipped (N total)"
+	legacySummaryRegex := regexp.MustCompile(`Summary:\s*(\d+)\s+added,\s*(\d+)\s+updated,\s*(\d+)\s+failed,\s*(\d+)\s+skipped`)
+	legacyMatches := legacySummaryRegex.FindAllStringSubmatch(output, -1)
 
-	// Sum up all summary lines
-	for _, matches := range allMatches {
+	for _, matches := range legacyMatches {
 		if len(matches) == 5 {
 			stats.Added += mustParseInt(t, matches[1])
 			stats.Updated += mustParseInt(t, matches[2])
@@ -177,8 +176,26 @@ func parseSyncStats(t *testing.T, output string) syncStats {
 		}
 	}
 
-	// If we found summary lines, return the totals
-	if len(allMatches) > 0 {
+	if len(legacyMatches) > 0 {
+		return stats
+	}
+
+	// Current compact per-source format:
+	// "✓ <source> (<mode>) — X added, Y updated[, Z removed]"
+	compactLineRegex := regexp.MustCompile(`(?m)^\s*[✓✔]\s+.*?—\s*(\d+)\s+added,\s*(\d+)\s+updated(?:,\s*\d+\s+removed)?\s*$`)
+	compactMatches := compactLineRegex.FindAllStringSubmatch(output, -1)
+	for _, matches := range compactMatches {
+		if len(matches) == 3 {
+			stats.Added += mustParseInt(t, matches[1])
+			stats.Updated += mustParseInt(t, matches[2])
+		}
+	}
+
+	// Track compact failed source lines for visibility in tests.
+	failedSourceLineRegex := regexp.MustCompile(`(?m)^\s*[✗xX]\s+.*?—\s*error:`)
+	stats.Failed += len(failedSourceLineRegex.FindAllString(output, -1))
+
+	if len(compactMatches) > 0 || stats.Failed > 0 {
 		return stats
 	}
 

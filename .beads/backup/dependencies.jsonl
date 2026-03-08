@@ -15,5 +15,9 @@
 {"created_at":"2026-03-08T00:09:41Z","created_by":"Hans Kohlreiter","depends_on_id":"ai-config-manager-4ao.6","issue_id":"ai-config-manager-4ao.7","type":"blocks"}
 {"created_at":"2026-03-08T00:46:36Z","created_by":"Hans Kohlreiter","depends_on_id":"ai-config-manager-4ao","issue_id":"ai-config-manager-4ao.8","type":"parent-child"}
 {"created_at":"2026-03-08T00:49:42Z","created_by":"Hans Kohlreiter","depends_on_id":"ai-config-manager-jhd","issue_id":"ai-config-manager-4ao.8","type":"blocks"}
+{"created_at":"2026-03-08T00:56:03Z","created_by":"Hans Kohlreiter","depends_on_id":"ai-config-manager-nh0","issue_id":"ai-config-manager-4ao.8","type":"blocks"}
+{"created_at":"2026-03-08T00:52:07Z","created_by":"Hans Kohlreiter","depends_on_id":"ai-config-manager-pci","issue_id":"ai-config-manager-4ao.8","type":"blocks"}
 {"created_at":"2026-03-08T00:36:36Z","created_by":"Hans Kohlreiter","depends_on_id":"ai-config-manager-4ao.1","issue_id":"ai-config-manager-5e4","type":"discovered-from"}
 {"created_at":"2026-03-08T00:49:38Z","created_by":"Hans Kohlreiter","depends_on_id":"ai-config-manager-4ao.8","issue_id":"ai-config-manager-jhd","type":"discovered-from"}
+{"created_at":"2026-03-08T00:55:59Z","created_by":"Hans Kohlreiter","depends_on_id":"ai-config-manager-4ao.8","issue_id":"ai-config-manager-nh0","type":"discovered-from"}
+{"created_at":"2026-03-08T00:52:03Z","created_by":"Hans Kohlreiter","depends_on_id":"ai-config-manager-4ao.8","issue_id":"ai-config-manager-pci","type":"discovered-from"}
