@@ -1,4 +1,4 @@
-.PHONY: build test integration-test test-integration e2e-test install clean help
+.PHONY: build test integration-test test-integration e2e-test install clean help os-info
 
 # Binary name
 BINARY=aimgr
@@ -17,13 +17,60 @@ GOBUILD=$(GOCMD) build
 GOTEST=$(GOCMD) test
 GOVET=$(GOCMD) vet
 GOMOD=$(GOCMD) mod
-INSTALL_PATH=~/bin
+
+# OS and Architecture Detection
+UNAME_S := $(shell uname -s)
+UNAME_M := $(shell uname -m)
+
+# Detect Operating System
+ifeq ($(UNAME_S),Linux)
+    DETECTED_OS := Linux
+    # Detect Linux Distro from /etc/os-release
+    ifeq ($(shell test -f /etc/os-release && echo yes),yes)
+        DISTRO := $(shell grep '^ID=' /etc/os-release | cut -d'=' -f2 | tr -d '"')
+    else
+        DISTRO := linux
+    endif
+    # Set install path (XDG-compliant for Linux)
+    INSTALL_PATH := ~/.local/bin
+    TIMEOUT := timeout
+else ifeq ($(UNAME_S),Darwin)
+    DETECTED_OS := macOS
+    DISTRO := 
+    INSTALL_PATH := /usr/local/bin
+    # Use gtimeout if available (from coreutils via brew), otherwise empty
+    TIMEOUT := $(shell command -v gtimeout 2>/dev/null || echo "")
+else ifeq ($(OS),Windows_NT)
+    DETECTED_OS := Windows
+    DISTRO := 
+    INSTALL_PATH := $(USERPROFILE)\AppData\Local\bin
+    TIMEOUT := timeout
+else
+    # Fallback for other Unix systems
+    DETECTED_OS := $(UNAME_S)
+    DISTRO := 
+    INSTALL_PATH := /usr/local/bin
+    TIMEOUT := timeout
+endif
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
 	@echo ''
 	@echo 'Available targets:'
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-20s %s\n", $$1, $$2}'
+
+os-info: ## Show detected OS, architecture, and installation paths
+	@echo "=== System Information ==="
+	@echo "Detected OS:        $(DETECTED_OS)"
+ifdef DISTRO
+	@echo "Linux Distro:       $(DISTRO)"
+endif
+	@echo "Architecture:       $(UNAME_M)"
+	@echo "Install Path:       $(INSTALL_PATH)"
+	@echo ""
+	@echo "Build Command:      $(GOBUILD) $(LDFLAGS)"
+	@echo "Timeout Command:    $(if $(TIMEOUT),$(TIMEOUT),none (no timeout available))"
+	@echo ""
 
 build: ## Build the binary
 	CGO_ENABLED=0 $(GOBUILD) $(LDFLAGS) -o $(BINARY) -v ./cmd/aimgr
@@ -45,11 +92,13 @@ test-integration: ## Run integration tests (requires network, uses real GitHub r
 
 e2e-test: ## Run end-to-end tests (slowest, requires network, tests full CLI)
 	@echo "Running E2E tests..."
-	@command -v timeout >/dev/null 2>&1 && \
-		timeout 10m $(GOTEST) -v -tags=e2e ./test/e2e/ || \
-		$(GOTEST) -v -tags=e2e ./test/e2e/
+ifdef TIMEOUT
+	$(TIMEOUT) 10m $(GOTEST) -v -tags=e2e ./test/e2e/
+else
+	$(GOTEST) -v -tags=e2e ./test/e2e/
+endif
 
-install: build ## Install binary to ~/bin
+install: build ## Install binary to $(INSTALL_PATH)
 	mkdir -p $(INSTALL_PATH)
 	cp $(BINARY) $(INSTALL_PATH)/
 	@echo "Installed $(BINARY) to $(INSTALL_PATH)"

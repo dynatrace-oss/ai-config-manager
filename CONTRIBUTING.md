@@ -24,6 +24,54 @@ make build
 make test
 ```
 
+### Installation Paths by Operating System
+
+The `make install` target automatically detects your OS and installs the `aimgr` binary to the appropriate location:
+
+#### macOS
+
+- **Install Path**: `/usr/local/bin`
+- **Why this location**: 
+  - Already in your system PATH (no manual PATH configuration needed)
+  - Used by Homebrew and other package managers
+  - Works with shell completion out of the box
+  - No `sudo` required (if `/usr/local/bin` exists)
+- **Shell Completion**: Works automatically once installed
+- **Command**: `make install` → binary at `/usr/local/bin/aimgr`
+
+#### Linux (Ubuntu, Arch, etc.)
+
+- **Install Path**: `~/.local/bin` (XDG Base Directory standard)
+- **Why this location**:
+  - User-specific installation (no `sudo` required)
+  - Follows XDG Base Directory Specification
+  - Keeps system directories clean
+- **Note**: You may need to add `~/.local/bin` to your PATH if not already present:
+  ```bash
+  export PATH="$HOME/.local/bin:$PATH"
+  ```
+  Add this line to your `~/.bashrc`, `~/.zshrc`, or equivalent shell config file.
+- **Command**: `make install` → binary at `~/.local/bin/aimgr`
+
+#### Windows (experimental support)
+
+- **Install Path**: `%USERPROFILE%\AppData\Local\bin`
+- **Note**: Windows support is prepared but may require additional testing
+
+#### Checking Your Installation
+
+After running `make install`, verify the installation:
+
+```bash
+# Show where the binary was installed
+make os-info
+
+# Verify the binary works
+aimgr --version
+```
+
+If `aimgr` is not found, add the install path to your PATH environment variable or run the binary with its full path.
+
 ### Verify Your Setup
 
 ```bash
@@ -205,7 +253,7 @@ make build             # Build binary
 
 ```bash
 make build             # Build to ./aimgr
-make install           # Build and install to ~/bin
+make install           # Build and install to INSTALL_PATH (OS-dependent)
 make clean             # Remove build artifacts
 ```
 

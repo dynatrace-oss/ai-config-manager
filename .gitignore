@@ -57,3 +57,6 @@ logs/
 # Dolt database files (added by bd init)
 .dolt/
 *.db
+
+# AI manager definition (not everyone uses the same skills)
+ai.package.yaml
