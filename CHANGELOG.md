@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [3.3.0] - 2026-03-12
+
+### Added
+- **GitHub Copilot agent support** — Added agent install support for GitHub Copilot / VS Code projects using `.github/agents/*.agent.md`, while keeping repository source agents as logical `agents/*.md` resources.
+
+### Fixed
+- **`repair` JSON output stream handling** — `aimgr repair` now redirects progress output to stderr in JSON mode so machine-readable stdout stays clean for automation.
+
+### Changed
+- **Makefile OS-awareness for contributor workflows** — Improved Makefile OS detection so common contributor commands (such as build/test workflows) behave more reliably on non-Linux platforms.
+
+
 ## [3.2.0] - 2026-03-08
 
 ### Added
@@ -866,6 +878,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cross-platform support (Linux, macOS)
 - Configuration management with XDG base directory support
 
+[3.3.0]: https://github.com/dynatrace-oss/ai-config-manager/compare/v3.2.0...v3.3.0
 [3.2.0]: https://github.com/dynatrace-oss/ai-config-manager/compare/v3.1.0...v3.2.0
 [3.1.0]: https://github.com/dynatrace-oss/ai-config-manager/compare/v3.0.1...v3.1.0
 [3.0.1]: https://github.com/dynatrace-oss/ai-config-manager/compare/v3.0.0...v3.0.1
