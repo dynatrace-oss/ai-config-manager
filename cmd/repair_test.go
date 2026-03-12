@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -105,7 +106,7 @@ func TestRepair_BrokenSymlink(t *testing.T) {
 		},
 	}
 
-	result := applyRepairFixes(projectDir, issues, manager)
+	result := applyRepairFixes(projectDir, issues, manager, output.Table)
 
 	if result.Summary.Fixed != 1 {
 		t.Errorf("Expected 1 fixed, got %d. Failed: %+v", result.Summary.Fixed, result.Failed)
@@ -166,7 +167,7 @@ func TestRepair_MissingResource(t *testing.T) {
 		},
 	}
 
-	result := applyRepairFixes(projectDir, issues, manager)
+	result := applyRepairFixes(projectDir, issues, manager, output.Table)
 
 	if result.Summary.Fixed != 1 {
 		t.Errorf("Expected 1 fixed, got %d. Failed: %+v", result.Summary.Fixed, result.Failed)
@@ -249,7 +250,7 @@ func TestRepair_PackageReference(t *testing.T) {
 		t.Fatalf("Expected package-level issue, got %+v", manifestIssues[0])
 	}
 
-	result := applyRepairFixes(projectDir, manifestIssues, manager)
+	result := applyRepairFixes(projectDir, manifestIssues, manager, output.Table)
 
 	if result.Summary.Fixed != 1 {
 		t.Errorf("Expected 1 fixed, got %d. Failed: %+v", result.Summary.Fixed, result.Failed)
@@ -294,7 +295,7 @@ func TestRepair_MissingPackageReference(t *testing.T) {
 		Severity:  "warning",
 	}}
 
-	result := applyRepairFixes(projectDir, issues, manager)
+	result := applyRepairFixes(projectDir, issues, manager, output.Table)
 
 	if result.Summary.Fixed != 0 {
 		t.Errorf("Expected 0 fixed, got %d", result.Summary.Fixed)
@@ -360,7 +361,7 @@ func TestRepair_HierarchicalCommand(t *testing.T) {
 		},
 	}
 
-	result := applyRepairFixes(projectDir, issues, manager)
+	result := applyRepairFixes(projectDir, issues, manager, output.Table)
 
 	if result.Summary.Fixed != 1 {
 		t.Errorf("Expected 1 fixed, got %d. Failed: %+v", result.Summary.Fixed, result.Failed)
@@ -416,7 +417,7 @@ func TestRepair_OrphanedSymlink(t *testing.T) {
 		},
 	}
 
-	result := applyRepairFixes(projectDir, issues, manager)
+	result := applyRepairFixes(projectDir, issues, manager, output.Table)
 
 	// Orphaned issues → hints only, not fixed or failed
 	if result.Summary.Fixed != 0 {
@@ -500,6 +501,187 @@ func TestRepair_RepairResultJSON(t *testing.T) {
 	}
 	if result.Fixed[0].Resource != "test-skill" {
 		t.Errorf("Expected resource 'test-skill', got %q", result.Fixed[0].Resource)
+	}
+}
+
+// TestRepair_JSONOutputNoProgressOnStdout verifies that when format is JSON,
+// progress lines do NOT appear on stdout — only valid JSON.
+// This is a regression test for ai-config-manager-cpd.
+func TestRepair_JSONOutputNoProgressOnStdout(t *testing.T) {
+	projectDir := t.TempDir()
+	repoDir := t.TempDir()
+
+	// Initialize repo and add a skill
+	manager := repo.NewManagerWithPath(repoDir)
+	if err := manager.Init(); err != nil {
+		t.Fatalf("Failed to init repo: %v", err)
+	}
+
+	tempSkillDir := t.TempDir()
+	skillDir := filepath.Join(tempSkillDir, "json-test-skill")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatalf("Failed to create skill directory: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"),
+		[]byte("---\ndescription: JSON test skill\n---\n\n# JSON Test Skill"), 0644); err != nil {
+		t.Fatalf("Failed to write SKILL.md: %v", err)
+	}
+	if err := manager.AddSkill(skillDir, "file://"+skillDir, "file"); err != nil {
+		t.Fatalf("Failed to add skill to repo: %v", err)
+	}
+
+	// Create a broken symlink in the project
+	skillsDir := filepath.Join(projectDir, ".opencode", "skills")
+	if err := os.MkdirAll(skillsDir, 0755); err != nil {
+		t.Fatalf("Failed to create skills dir: %v", err)
+	}
+	brokenSymlink := filepath.Join(skillsDir, "json-test-skill")
+	if err := os.Symlink("/nonexistent/path/json-test-skill", brokenSymlink); err != nil {
+		t.Fatalf("Failed to create broken symlink: %v", err)
+	}
+
+	issues := []VerifyIssue{
+		{
+			Resource:  "json-test-skill",
+			Tool:      "opencode",
+			IssueType: issueTypeBroken,
+			Path:      brokenSymlink,
+			Severity:  "error",
+		},
+	}
+
+	// Capture stdout during applyRepairFixes with JSON format
+	oldStdout := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("Failed to create pipe: %v", err)
+	}
+	os.Stdout = w
+
+	result := applyRepairFixes(projectDir, issues, manager, output.JSON)
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	buf := make([]byte, 8192)
+	n, _ := r.Read(buf)
+	stdoutContent := string(buf[:n])
+
+	// The repair should succeed
+	if result.Summary.Fixed != 1 {
+		t.Errorf("Expected 1 fixed, got %d. Failed: %+v", result.Summary.Fixed, result.Failed)
+	}
+
+	// stdout should be empty — all progress goes to stderr in JSON mode
+	if stdoutContent != "" {
+		t.Errorf("Expected no stdout output in JSON mode, but got:\n%s", stdoutContent)
+	}
+
+	// Now verify that repairDisplayResult + the full pipeline produces valid JSON
+	r2, w2, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("Failed to create pipe: %v", err)
+	}
+	os.Stdout = w2
+
+	if err := repairDisplayResult(result, output.JSON); err != nil {
+		w2.Close()
+		os.Stdout = oldStdout
+		t.Fatalf("repairDisplayResult failed: %v", err)
+	}
+	w2.Close()
+	os.Stdout = oldStdout
+
+	buf2 := make([]byte, 8192)
+	n2, _ := r2.Read(buf2)
+	jsonOutput := string(buf2[:n2])
+
+	// Verify the JSON is parseable
+	var parsed RepairResult
+	if err := json.Unmarshal([]byte(jsonOutput), &parsed); err != nil {
+		t.Errorf("JSON output is not valid JSON: %v\nGot: %s", err, jsonOutput)
+	}
+	if parsed.Summary.Fixed != 1 {
+		t.Errorf("Parsed JSON should show 1 fixed, got %d", parsed.Summary.Fixed)
+	}
+}
+
+// TestRepair_JSONOutputPackageNoProgressOnStdout verifies that when repairing a
+// package reference with JSON format, the package install progress lines do NOT
+// appear on stdout.
+func TestRepair_JSONOutputPackageNoProgressOnStdout(t *testing.T) {
+	projectDir := t.TempDir()
+	repoDir := t.TempDir()
+
+	// Initialize repo, add a skill, and create a package
+	manager := repo.NewManagerWithPath(repoDir)
+	if err := manager.Init(); err != nil {
+		t.Fatalf("Failed to init repo: %v", err)
+	}
+
+	tempSkillDir := t.TempDir()
+	skillDir := filepath.Join(tempSkillDir, "pkg-json-skill")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatalf("Failed to create skill directory: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"),
+		[]byte("---\ndescription: Package JSON test skill\n---\n\n# Skill"), 0644); err != nil {
+		t.Fatalf("Failed to write SKILL.md: %v", err)
+	}
+	if err := manager.AddSkill(skillDir, "file://"+skillDir, "file"); err != nil {
+		t.Fatalf("Failed to add skill to repo: %v", err)
+	}
+
+	pkg := &resource.Package{
+		Name:        "json-test-pkg",
+		Description: "A test package for JSON output",
+		Resources:   []string{"skill/pkg-json-skill"},
+	}
+	if err := resource.SavePackage(pkg, repoDir); err != nil {
+		t.Fatalf("Failed to save package: %v", err)
+	}
+
+	// Create tool dir but do NOT install the skill
+	skillsDir := filepath.Join(projectDir, ".opencode", "skills")
+	if err := os.MkdirAll(skillsDir, 0755); err != nil {
+		t.Fatalf("Failed to create skills dir: %v", err)
+	}
+
+	issues := []VerifyIssue{
+		{
+			Resource:  "package/json-test-pkg",
+			Tool:      "any",
+			IssueType: issueTypeNotInstalled,
+			Path:      filepath.Join(projectDir, manifest.ManifestFileName),
+			Severity:  "warning",
+		},
+	}
+
+	// Capture stdout during applyRepairFixes with JSON format
+	oldStdout := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("Failed to create pipe: %v", err)
+	}
+	os.Stdout = w
+
+	result := applyRepairFixes(projectDir, issues, manager, output.JSON)
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	buf := make([]byte, 8192)
+	n, _ := r.Read(buf)
+	stdoutContent := string(buf[:n])
+
+	// The repair should succeed
+	if result.Summary.Fixed != 1 {
+		t.Errorf("Expected 1 fixed, got %d. Failed: %+v", result.Summary.Fixed, result.Failed)
+	}
+
+	// stdout should be empty — all package install progress goes to stderr in JSON mode
+	if stdoutContent != "" {
+		t.Errorf("Expected no stdout output in JSON mode for package repair, but got:\n%s", stdoutContent)
 	}
 }
 

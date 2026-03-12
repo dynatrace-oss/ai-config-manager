@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -546,6 +547,13 @@ func init() {
 
 // installPackage installs all resources from a package
 func installPackage(packageName string, installer *install.Installer, manager *repo.Manager) error {
+	return installPackageWithWriter(packageName, installer, manager, os.Stdout)
+}
+
+// installPackageWithWriter installs all resources from a package definition,
+// writing progress output to the given writer. Use os.Stdout for interactive
+// use and os.Stderr (or io.Discard) when stdout must contain only structured output.
+func installPackageWithWriter(packageName string, installer *install.Installer, manager *repo.Manager, w io.Writer) error {
 	repoPath := manager.GetRepoPath()
 	pkgPath := resource.GetPackagePath(packageName, repoPath)
 
@@ -555,8 +563,8 @@ func installPackage(packageName string, installer *install.Installer, manager *r
 		return fmt.Errorf("package '%s' not found in repository: %w", packageName, err)
 	}
 
-	fmt.Printf("Installing package: %s\n", pkg.Name)
-	fmt.Printf("Description: %s\n\n", pkg.Description)
+	fmt.Fprintf(w, "Installing package: %s\n", pkg.Name)
+	fmt.Fprintf(w, "Description: %s\n\n", pkg.Description)
 
 	installed := 0
 	missing := 0
@@ -574,14 +582,14 @@ func installPackage(packageName string, installer *install.Installer, manager *r
 		// Check if resource exists in repo
 		_, err = manager.Get(resName, resType)
 		if err != nil {
-			fmt.Printf("  ✗ %s - not found in repo\n", ref)
+			fmt.Fprintf(w, "  ✗ %s - not found in repo\n", ref)
 			missing++
 			continue
 		}
 
 		// Check if already installed
 		if !installForceFlag && installer.IsInstalled(resName, resType) {
-			fmt.Printf("  ○ %s - already installed, skipping\n", ref)
+			fmt.Fprintf(w, "  ○ %s - already installed, skipping\n", ref)
 			continue
 		}
 
@@ -610,25 +618,25 @@ func installPackage(packageName string, installer *install.Installer, manager *r
 		if installErr != nil {
 			errors = append(errors, fmt.Sprintf("%s: %v", ref, installErr))
 		} else {
-			fmt.Printf("  ✓ %s\n", ref)
+			fmt.Fprintf(w, "  ✓ %s\n", ref)
 			installed++
 		}
 	}
 
 	// Print summary
-	fmt.Println()
+	fmt.Fprintln(w)
 	if missing > 0 {
-		fmt.Printf("⚠ Warning: %d resource(s) not found in repo\n", missing)
+		fmt.Fprintf(w, "⚠ Warning: %d resource(s) not found in repo\n", missing)
 	}
 	if len(errors) > 0 {
-		fmt.Println("Errors:")
+		fmt.Fprintln(w, "Errors:")
 		for _, e := range errors {
-			fmt.Printf("  ✗ %s\n", e)
+			fmt.Fprintf(w, "  ✗ %s\n", e)
 		}
 	}
 
 	totalResources := len(pkg.Resources)
-	fmt.Printf("Installed %d of %d resources from package '%s'\n", installed, totalResources, pkg.Name)
+	fmt.Fprintf(w, "Installed %d of %d resources from package '%s'\n", installed, totalResources, pkg.Name)
 
 	if len(errors) > 0 {
 		return fmt.Errorf("package installation completed with errors")

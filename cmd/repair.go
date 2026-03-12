@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -126,7 +127,7 @@ Examples:
 			}
 
 			if len(issues) > 0 {
-				result = applyRepairFixes(projectPath, issues, manager)
+				result = applyRepairFixes(projectPath, issues, manager, parsedFormat)
 			}
 		} else {
 			fmt.Println("No tool directories found in this project.")
@@ -203,11 +204,18 @@ Examples:
 
 // applyRepairFixes processes each issue and applies the appropriate fix.
 // Returns a RepairResult summarising what was done.
-func applyRepairFixes(projectPath string, issues []VerifyIssue, repoManager *repo.Manager) RepairResult {
+// When format is JSON, progress messages go to stderr to keep stdout clean.
+func applyRepairFixes(projectPath string, issues []VerifyIssue, repoManager *repo.Manager, format output.Format) RepairResult {
 	var result RepairResult
 	result.Fixed = make([]RepairAction, 0)
 	result.Failed = make([]RepairAction, 0)
 	result.Hints = make([]RepairAction, 0)
+
+	// Progress output goes to stderr in JSON mode so stdout is valid JSON
+	var progressW io.Writer = os.Stdout
+	if format == output.JSON {
+		progressW = os.Stderr
+	}
 
 	// Detect tools once for all reinstallation operations
 	detectedTools, err := tools.DetectExistingTools(projectPath)
@@ -221,7 +229,7 @@ func applyRepairFixes(projectPath string, issues []VerifyIssue, repoManager *rep
 		switch issue.IssueType {
 
 		case issueTypeBroken, issueTypeWrongRepo:
-			action := applyRepairBrokenOrWrongRepo(projectPath, issue, repoManager, detectedTools)
+			action := applyRepairBrokenOrWrongRepo(projectPath, issue, repoManager, detectedTools, progressW)
 			if action.Description == "" {
 				// success — Description is filled only on error paths; use a fixed message
 				result.Fixed = append(result.Fixed, RepairAction{
@@ -235,7 +243,7 @@ func applyRepairFixes(projectPath string, issues []VerifyIssue, repoManager *rep
 			}
 
 		case issueTypeNotInstalled:
-			action := applyRepairNotInstalled(projectPath, issue, repoManager, detectedTools)
+			action := applyRepairNotInstalled(projectPath, issue, repoManager, detectedTools, progressW)
 			if action.Description == "" {
 				result.Fixed = append(result.Fixed, RepairAction{
 					Resource:    issue.Resource,
@@ -279,8 +287,9 @@ func applyRepairFixes(projectPath string, issues []VerifyIssue, repoManager *rep
 // applyRepairBrokenOrWrongRepo fixes a broken or wrong-repo symlink by
 // removing it and reinstalling from the repository.
 // Returns an empty RepairAction on success, or one with a Description on failure.
-func applyRepairBrokenOrWrongRepo(projectPath string, issue VerifyIssue, repoManager *repo.Manager, detectedTools []tools.Tool) RepairAction {
-	fmt.Printf("  Fixing %s...\n", issue.Resource)
+// Progress output is written to progressW.
+func applyRepairBrokenOrWrongRepo(projectPath string, issue VerifyIssue, repoManager *repo.Manager, detectedTools []tools.Tool, progressW io.Writer) RepairAction {
+	fmt.Fprintf(progressW, "  Fixing %s...\n", issue.Resource)
 
 	// Remove broken symlink
 	if err := os.Remove(issue.Path); err != nil {
@@ -295,8 +304,8 @@ func applyRepairBrokenOrWrongRepo(projectPath string, issue VerifyIssue, repoMan
 	// Check if resource still exists in repo
 	if _, err := repoManager.Get(resName, resType); err != nil {
 		msg := fmt.Sprintf("Resource '%s' no longer exists in repository — consider removing from %s", resName, manifest.ManifestFileName)
-		fmt.Printf("    ✗ Removed broken symlink. %s\n", msg)
-		fmt.Printf("      Run: aimgr uninstall %s/%s\n", resType, resName)
+		fmt.Fprintf(progressW, "    ✗ Removed broken symlink. %s\n", msg)
+		fmt.Fprintf(progressW, "      Run: aimgr uninstall %s/%s\n", resType, resName)
 		// Symlink was removed; count this as partially fixed (symlink gone), but
 		// we can't reinstall, so we put it in failed with an informative message.
 		return RepairAction{Resource: issue.Resource, Tool: issue.Tool, IssueType: issue.IssueType, Description: msg}
@@ -316,15 +325,16 @@ func applyRepairBrokenOrWrongRepo(projectPath string, issue VerifyIssue, repoMan
 		return RepairAction{Resource: issue.Resource, Tool: issue.Tool, IssueType: issue.IssueType, Description: msg}
 	}
 
-	fmt.Printf("    ✓ Reinstalled %s/%s\n", resType, resName)
+	fmt.Fprintf(progressW, "    ✓ Reinstalled %s/%s\n", resType, resName)
 	return RepairAction{} // empty = success
 }
 
 // applyRepairNotInstalled installs a resource that's listed in the manifest
 // but not present on disk.
 // Returns an empty RepairAction on success, or one with a Description on failure.
-func applyRepairNotInstalled(projectPath string, issue VerifyIssue, repoManager *repo.Manager, detectedTools []tools.Tool) RepairAction {
-	fmt.Printf("  Installing %s...\n", issue.Resource)
+// Progress output is written to progressW.
+func applyRepairNotInstalled(projectPath string, issue VerifyIssue, repoManager *repo.Manager, detectedTools []tools.Tool, progressW io.Writer) RepairAction {
+	fmt.Fprintf(progressW, "  Installing %s...\n", issue.Resource)
 
 	// Create installer
 	installer, err := install.NewInstallerWithTargets(projectPath, detectedTools)
@@ -345,13 +355,13 @@ func applyRepairNotInstalled(projectPath string, issue VerifyIssue, repoManager 
 			return RepairAction{Resource: issue.Resource, Tool: issue.Tool, IssueType: issue.IssueType, Description: msg}
 		}
 
-		if installErr := installPackage(packageName, installer, repoManager); installErr != nil {
+		if installErr := installPackageWithWriter(packageName, installer, repoManager, progressW); installErr != nil {
 			msg := fmt.Sprintf("Failed to install: %v", installErr)
 			fmt.Fprintf(os.Stderr, "    %s\n", msg)
 			return RepairAction{Resource: issue.Resource, Tool: issue.Tool, IssueType: issue.IssueType, Description: msg}
 		}
 
-		fmt.Printf("    ✓ Installed %s\n", issue.Resource)
+		fmt.Fprintf(progressW, "    ✓ Installed %s\n", issue.Resource)
 		return RepairAction{} // empty = success
 	}
 
@@ -366,7 +376,7 @@ func applyRepairNotInstalled(projectPath string, issue VerifyIssue, repoManager 
 	// Check if resource exists in repo
 	if _, err := repoManager.Get(resName, resType); err != nil {
 		msg := fmt.Sprintf("Resource '%s' not found in repository — remove from %s or run 'aimgr repo add'", issue.Resource, manifest.ManifestFileName)
-		fmt.Printf("    ✗ %s\n", msg)
+		fmt.Fprintf(progressW, "    ✗ %s\n", msg)
 		return RepairAction{Resource: issue.Resource, Tool: issue.Tool, IssueType: issue.IssueType, Description: msg}
 	}
 
@@ -376,7 +386,7 @@ func applyRepairNotInstalled(projectPath string, issue VerifyIssue, repoManager 
 		return RepairAction{Resource: issue.Resource, Tool: issue.Tool, IssueType: issue.IssueType, Description: msg}
 	}
 
-	fmt.Printf("    ✓ Installed %s\n", issue.Resource)
+	fmt.Fprintf(progressW, "    ✓ Installed %s\n", issue.Resource)
 	return RepairAction{} // empty = success
 }
 
