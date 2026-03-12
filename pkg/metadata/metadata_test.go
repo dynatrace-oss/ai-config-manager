@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -828,7 +829,7 @@ func TestSavePackageMetadata(t *testing.T) {
 
 			if tt.wantError {
 				if tt.checkMsg != "" && err != nil {
-					if !contains(err.Error(), tt.checkMsg) {
+					if !strings.Contains(err.Error(), tt.checkMsg) {
 						t.Errorf("Error message %q should contain %q", err.Error(), tt.checkMsg)
 					}
 				}
@@ -989,7 +990,7 @@ func TestLoadPackageMetadataCorruptedJSON(t *testing.T) {
 	}
 
 	// Verify error mentions unmarshaling
-	if !contains(err.Error(), "unmarshal") {
+	if !strings.Contains(err.Error(), "unmarshal") {
 		t.Errorf("Error should mention unmarshaling, got: %v", err)
 	}
 }
@@ -1135,19 +1136,4 @@ func TestPackageMetadataJSONFormat(t *testing.T) {
 	if err != nil {
 		t.Errorf("first_added not in RFC3339 format: %v", err)
 	}
-}
-
-// Helper function to check if a string contains a substring
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
-		(len(s) > 0 && len(substr) > 0 && containsHelper(s, substr)))
-}
-
-func containsHelper(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }

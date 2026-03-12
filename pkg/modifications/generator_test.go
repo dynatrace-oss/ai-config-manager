@@ -3,6 +3,7 @@ package modifications
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/config"
@@ -99,12 +100,12 @@ This is the skill content.
 	}
 
 	// Should contain the mapped model value
-	if !containsString(string(modContent), "langdock/claude-sonnet-4-5") {
+	if !strings.Contains(string(modContent), "langdock/claude-sonnet-4-5") {
 		t.Errorf("modification file does not contain mapped model value")
 	}
 
 	// Should still contain the skill content
-	if !containsString(string(modContent), "This is the skill content.") {
+	if !strings.Contains(string(modContent), "This is the skill content.") {
 		t.Errorf("modification file does not preserve markdown content")
 	}
 }
@@ -223,7 +224,7 @@ description: A test skill without model
 		t.Fatalf("failed to read modification file: %v", err)
 	}
 
-	if !containsString(string(modContent), "langdock/default-model") {
+	if !strings.Contains(string(modContent), "langdock/default-model") {
 		t.Errorf("modification file should contain the default model value added via null mapping")
 	}
 }
@@ -292,7 +293,7 @@ Review code for quality.
 		t.Fatalf("failed to read modification file: %v", err)
 	}
 
-	if !containsString(string(modContent), "langdock/gpt-4-turbo") {
+	if !strings.Contains(string(modContent), "langdock/gpt-4-turbo") {
 		t.Errorf("modification file does not contain mapped model value")
 	}
 }
@@ -932,7 +933,7 @@ Deploy the application to production.
 		t.Fatalf("failed to read modification file: %v", err)
 	}
 
-	if !containsString(string(modContent), "langdock/claude-opus-4") {
+	if !strings.Contains(string(modContent), "langdock/claude-opus-4") {
 		t.Errorf("modification file does not contain mapped model value")
 	}
 }
@@ -996,18 +997,4 @@ model: sonnet-4.5
 			t.Errorf("%s modification file not created at %s", toolName, modPath)
 		}
 	}
-}
-
-// Helper function to check if a string contains a substring
-func containsString(s, substr string) bool {
-	return len(s) >= len(substr) && findSubstring(s, substr)
-}
-
-func findSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }

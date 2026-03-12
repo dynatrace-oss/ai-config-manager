@@ -96,7 +96,7 @@ func TestParseTargetFlag(t *testing.T) {
 
 			if tt.wantErr && err != nil {
 				if tt.errContains != "" {
-					if !contains(err.Error(), tt.errContains) {
+					if !strings.Contains(err.Error(), tt.errContains) {
 						t.Errorf("parseTargetFlag() error = %v, want error containing %q", err, tt.errContains)
 					}
 				}
@@ -115,19 +115,6 @@ func TestParseTargetFlag(t *testing.T) {
 			}
 		})
 	}
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && (s[:len(substr)] == substr || s[len(s)-len(substr):] == substr || containsMiddle(s, substr)))
-}
-
-func containsMiddle(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }
 
 func captureInstallSummaryOutput(t *testing.T, fn func()) string {
@@ -204,12 +191,11 @@ func TestPrintInstallSummary_ClaudeOpenCodeAgentPathsRemainMd(t *testing.T) {
 // Test helpers for setting up test resources
 
 // createTestRepo creates a temporary repo with test resources
-func createTestRepo(t *testing.T) (repoPath string, cleanup func()) {
+func createTestRepo(t *testing.T) string {
 	t.Helper()
 
 	// Create temp directory for repo
-	tempDir := t.TempDir()
-	repoPath = tempDir
+	repoPath := t.TempDir()
 
 	// Create directory structure
 	if err := os.MkdirAll(filepath.Join(repoPath, "commands"), 0755); err != nil {
@@ -264,11 +250,7 @@ func createTestRepo(t *testing.T) (repoPath string, cleanup func()) {
 		}
 	}
 
-	cleanup = func() {
-		// Cleanup is automatic with t.TempDir()
-	}
-
-	return repoPath, cleanup
+	return repoPath
 }
 
 // createTestProject creates a temporary project directory with tool directories
@@ -343,8 +325,7 @@ func verifyNotInstalled(t *testing.T, projectPath, toolDir string, resourceType 
 // Test Pattern Expansion
 
 func TestExpandPattern_AllSkills(t *testing.T) {
-	repoPath, cleanup := createTestRepo(t)
-	defer cleanup()
+	repoPath := createTestRepo(t)
 
 	mgr := repo.NewManagerWithPath(repoPath)
 
@@ -369,8 +350,7 @@ func TestExpandPattern_AllSkills(t *testing.T) {
 }
 
 func TestExpandPattern_PrefixMatch(t *testing.T) {
-	repoPath, cleanup := createTestRepo(t)
-	defer cleanup()
+	repoPath := createTestRepo(t)
 
 	mgr := repo.NewManagerWithPath(repoPath)
 
@@ -399,8 +379,7 @@ func TestExpandPattern_PrefixMatch(t *testing.T) {
 }
 
 func TestExpandPattern_AllTypes(t *testing.T) {
-	repoPath, cleanup := createTestRepo(t)
-	defer cleanup()
+	repoPath := createTestRepo(t)
 
 	mgr := repo.NewManagerWithPath(repoPath)
 
@@ -421,8 +400,7 @@ func TestExpandPattern_AllTypes(t *testing.T) {
 }
 
 func TestExpandPattern_ExactName(t *testing.T) {
-	repoPath, cleanup := createTestRepo(t)
-	defer cleanup()
+	repoPath := createTestRepo(t)
 
 	mgr := repo.NewManagerWithPath(repoPath)
 
@@ -442,8 +420,7 @@ func TestExpandPattern_ExactName(t *testing.T) {
 }
 
 func TestExpandPattern_NoMatch(t *testing.T) {
-	repoPath, cleanup := createTestRepo(t)
-	defer cleanup()
+	repoPath := createTestRepo(t)
 
 	mgr := repo.NewManagerWithPath(repoPath)
 
@@ -460,8 +437,7 @@ func TestExpandPattern_NoMatch(t *testing.T) {
 }
 
 func TestExpandPattern_InvalidPattern(t *testing.T) {
-	repoPath, cleanup := createTestRepo(t)
-	defer cleanup()
+	repoPath := createTestRepo(t)
 
 	mgr := repo.NewManagerWithPath(repoPath)
 
@@ -473,8 +449,7 @@ func TestExpandPattern_InvalidPattern(t *testing.T) {
 }
 
 func TestExpandPattern_EmptyPattern(t *testing.T) {
-	repoPath, cleanup := createTestRepo(t)
-	defer cleanup()
+	repoPath := createTestRepo(t)
 
 	mgr := repo.NewManagerWithPath(repoPath)
 
@@ -497,8 +472,7 @@ func TestProcessInstall_WithPatternExpansion(t *testing.T) {
 	// Note: This is more of a unit test of processInstall, full integration would need
 	// actual installer setup which is complex for testing
 
-	repoPath, cleanup := createTestRepo(t)
-	defer cleanup()
+	repoPath := createTestRepo(t)
 
 	mgr := repo.NewManagerWithPath(repoPath)
 
@@ -524,8 +498,7 @@ func TestProcessInstall_WithPatternExpansion(t *testing.T) {
 }
 
 func TestInstallPattern_MultipleTypes(t *testing.T) {
-	repoPath, cleanup := createTestRepo(t)
-	defer cleanup()
+	repoPath := createTestRepo(t)
 
 	mgr := repo.NewManagerWithPath(repoPath)
 
@@ -561,8 +534,7 @@ func TestInstallPattern_MultipleTypes(t *testing.T) {
 }
 
 func TestInstallPattern_EdgeCases(t *testing.T) {
-	repoPath, cleanup := createTestRepo(t)
-	defer cleanup()
+	repoPath := createTestRepo(t)
 
 	mgr := repo.NewManagerWithPath(repoPath)
 
@@ -676,8 +648,7 @@ func TestInstallPattern_WithFlags(t *testing.T) {
 }
 
 func TestExpandPattern_SpecialCharacters(t *testing.T) {
-	repoPath, cleanup := createTestRepo(t)
-	defer cleanup()
+	repoPath := createTestRepo(t)
 
 	mgr := repo.NewManagerWithPath(repoPath)
 
@@ -761,8 +732,7 @@ func createTestPackage(t *testing.T, repoPath, packageName string, resources []s
 
 // TestInstallMultipleSkills tests installing multiple skills
 func TestInstallMultipleSkills(t *testing.T) {
-	repoPath, cleanup := createTestRepo(t)
-	defer cleanup()
+	repoPath := createTestRepo(t)
 
 	mgr := repo.NewManagerWithPath(repoPath)
 
@@ -778,8 +748,7 @@ func TestInstallMultipleSkills(t *testing.T) {
 
 // TestInstallSkillAndPackage tests installing a skill and a package together
 func TestInstallSkillAndPackage(t *testing.T) {
-	repoPath, cleanup := createTestRepo(t)
-	defer cleanup()
+	repoPath := createTestRepo(t)
 
 	// Create a test package with some skills
 	createTestPackage(t, repoPath, "test-pkg", []string{"skill/test-skill", "command/test-command"})
@@ -805,8 +774,7 @@ func TestInstallSkillAndPackage(t *testing.T) {
 
 // TestInstallMultiplePackages tests installing multiple packages
 func TestInstallMultiplePackages(t *testing.T) {
-	repoPath, cleanup := createTestRepo(t)
-	defer cleanup()
+	repoPath := createTestRepo(t)
 
 	// Create test packages
 	createTestPackage(t, repoPath, "pkg-a", []string{"skill/pdf-processing"})

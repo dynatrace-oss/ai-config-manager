@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -160,7 +161,7 @@ func TestParseResourceReference(t *testing.T) {
 
 			// Check error message if error expected
 			if err != nil && tt.errorMessage != "" {
-				if !contains(err.Error(), tt.errorMessage) {
+				if !strings.Contains(err.Error(), tt.errorMessage) {
 					t.Errorf("ParseResourceReference() error message = %v, want to contain %v", err.Error(), tt.errorMessage)
 				}
 			}
@@ -467,7 +468,7 @@ func TestLoadPackage(t *testing.T) {
 
 			// Check error message if error expected
 			if err != nil && tt.errorMessage != "" {
-				if !contains(err.Error(), tt.errorMessage) {
+				if !strings.Contains(err.Error(), tt.errorMessage) {
 					t.Errorf("LoadPackage() error message = %v, want to contain %v", err.Error(), tt.errorMessage)
 				}
 				return
@@ -533,7 +534,7 @@ func TestSavePackage(t *testing.T) {
 
 				// Verify JSON formatting (should be indented)
 				data, _ := os.ReadFile(filePath)
-				if !contains(string(data), "\n  ") {
+				if !strings.Contains(string(data), "\n  ") {
 					t.Errorf("SavePackage() did not format JSON with indentation")
 				}
 			},
@@ -696,7 +697,7 @@ func TestSavePackage(t *testing.T) {
 
 			// Check error message if error expected
 			if err != nil && tt.errorMessage != "" {
-				if !contains(err.Error(), tt.errorMessage) {
+				if !strings.Contains(err.Error(), tt.errorMessage) {
 					t.Errorf("SavePackage() error message = %v, want to contain %v", err.Error(), tt.errorMessage)
 				}
 				return

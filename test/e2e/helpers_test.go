@@ -5,6 +5,7 @@ package e2e
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -50,7 +51,7 @@ func TestGetRepoPathFromConfig(t *testing.T) {
 	}
 
 	// Should contain "test-repo-1" from e2e-test.yaml
-	if !contains(repoPath, "test-repo-1") {
+	if !strings.Contains(repoPath, "test-repo-1") {
 		t.Errorf("Repo path should contain 'test-repo-1', got: %s", repoPath)
 	}
 }
@@ -70,7 +71,7 @@ func TestSetupTestRepo(t *testing.T) {
 	}
 
 	// Should be in test/e2e/repos/
-	if !contains(repoPath, "test/e2e/repos") {
+	if !strings.Contains(repoPath, "test/e2e/repos") {
 		t.Errorf("Test repo should be in test/e2e/repos/, got: %s", repoPath)
 	}
 
@@ -144,7 +145,7 @@ func TestGetTestDataPath(t *testing.T) {
 	}
 
 	// Should end with test/testdata
-	if !contains(testDataPath, "test/testdata") && !contains(testDataPath, "test\\testdata") {
+	if !strings.Contains(testDataPath, "test/testdata") && !strings.Contains(testDataPath, "test\\testdata") {
 		t.Errorf("Test data path should contain test/testdata, got: %s", testDataPath)
 	}
 }
@@ -213,23 +214,4 @@ func TestFindResourceByName(t *testing.T) {
 	if notFound != nil {
 		t.Error("Should not find nonexistent resource")
 	}
-}
-
-// Helper function to check if string contains substring (for path checks).
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) &&
-		(s == substr ||
-			len(s) > len(substr) &&
-				(s[:len(substr)] == substr ||
-					s[len(s)-len(substr):] == substr ||
-					containsMiddle(s, substr)))
-}
-
-func containsMiddle(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }

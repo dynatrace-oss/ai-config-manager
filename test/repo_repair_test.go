@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -165,13 +166,8 @@ func TestRepoRepairIntegration_JSONOutput(t *testing.T) {
 // containsAny returns true if s contains any of the substrings.
 func containsAny(s string, substrings ...string) bool {
 	for _, sub := range substrings {
-		if len(sub) > 0 {
-			// simple substring check
-			for i := 0; i <= len(s)-len(sub); i++ {
-				if s[i:i+len(sub)] == sub {
-					return true
-				}
-			}
+		if strings.Contains(s, sub) {
+			return true
 		}
 	}
 	return false

@@ -3,6 +3,7 @@ package resource
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -234,7 +235,7 @@ func TestDetectType(t *testing.T) {
 			}
 
 			if err != nil && tt.errorMessage != "" {
-				if err.Error() != tt.errorMessage && !contains(err.Error(), tt.errorMessage) {
+				if err.Error() != tt.errorMessage && !strings.Contains(err.Error(), tt.errorMessage) {
 					t.Errorf("DetectType() error message = %v, want to contain %v", err.Error(), tt.errorMessage)
 				}
 			}
@@ -316,21 +317,6 @@ func TestLoad_MinimalAgent(t *testing.T) {
 	if res.Description != "Minimal test agent" {
 		t.Errorf("Load() description = %v, want %v", res.Description, "Minimal test agent")
 	}
-}
-
-// Helper function to check if a string contains a substring
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
-		(len(s) > 0 && len(substr) > 0 && findSubstring(s, substr)))
-}
-
-func findSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }
 
 // TestDetectType_NestedCommands tests detection of commands in nested directories

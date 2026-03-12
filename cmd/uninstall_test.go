@@ -72,7 +72,7 @@ func TestParseResourceArg(t *testing.T) {
 					t.Errorf("parseResourceArg() expected error but got none")
 					return
 				}
-				if tt.errContains != "" && !containsString(err.Error(), tt.errContains) {
+				if tt.errContains != "" && !strings.Contains(err.Error(), tt.errContains) {
 					t.Errorf("parseResourceArg() error = %v, want error containing %v", err, tt.errContains)
 				}
 				return
@@ -235,25 +235,10 @@ func TestProcessUninstall_NotSymlink(t *testing.T) {
 	}
 }
 
-// Helper function to check if a string contains a substring
-func containsString(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
-		(len(s) > 0 && len(substr) > 0 && stringContains(s, substr)))
-}
-
-func stringContains(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
-}
-
 // Test helpers for uninstall pattern tests
 
 // setupTestRepoForUninstall creates a test repo and installs some resources
-func setupTestRepoForUninstall(t *testing.T) (repoPath string, projectPath string, cleanup func()) {
+func setupTestRepoForUninstall(t *testing.T) (repoPath string, projectPath string) {
 	t.Helper()
 
 	// Create temp repo
@@ -316,11 +301,7 @@ func setupTestRepoForUninstall(t *testing.T) (repoPath string, projectPath strin
 		t.Fatalf("failed to create project dirs: %v", err)
 	}
 
-	cleanup = func() {
-		// Cleanup is automatic with t.TempDir()
-	}
-
-	return repoDir, projectDir, cleanup
+	return repoDir, projectDir
 }
 
 // installSymlink creates a symlink from project to repo
@@ -348,8 +329,7 @@ func installSymlink(t *testing.T, projectPath, repoPath string, resourceType res
 // Test Pattern Expansion for Uninstall
 
 func TestExpandUninstallPattern_AllSkills(t *testing.T) {
-	repoPath, projectPath, cleanup := setupTestRepoForUninstall(t)
-	defer cleanup()
+	repoPath, projectPath := setupTestRepoForUninstall(t)
 
 	// Install some skills
 	installSymlink(t, projectPath, repoPath, resource.Skill, "pdf-processing")
@@ -370,8 +350,7 @@ func TestExpandUninstallPattern_AllSkills(t *testing.T) {
 }
 
 func TestExpandUninstallPattern_PrefixMatch(t *testing.T) {
-	repoPath, projectPath, cleanup := setupTestRepoForUninstall(t)
-	defer cleanup()
+	repoPath, projectPath := setupTestRepoForUninstall(t)
 
 	// Install some skills
 	installSymlink(t, projectPath, repoPath, resource.Skill, "pdf-processing")
@@ -403,8 +382,7 @@ func TestExpandUninstallPattern_PrefixMatch(t *testing.T) {
 }
 
 func TestExpandUninstallPattern_AllTypes(t *testing.T) {
-	repoPath, projectPath, cleanup := setupTestRepoForUninstall(t)
-	defer cleanup()
+	repoPath, projectPath := setupTestRepoForUninstall(t)
 
 	// Install resources with "test" in name across types
 	installSymlink(t, projectPath, repoPath, resource.Command, "test-command")
@@ -428,8 +406,7 @@ func TestExpandUninstallPattern_AllTypes(t *testing.T) {
 }
 
 func TestExpandUninstallPattern_NoMatches(t *testing.T) {
-	repoPath, projectPath, cleanup := setupTestRepoForUninstall(t)
-	defer cleanup()
+	repoPath, projectPath := setupTestRepoForUninstall(t)
 
 	// Install one skill
 	installSymlink(t, projectPath, repoPath, resource.Skill, "pdf-processing")
@@ -448,8 +425,7 @@ func TestExpandUninstallPattern_NoMatches(t *testing.T) {
 }
 
 func TestExpandUninstallPattern_ExactName(t *testing.T) {
-	repoPath, projectPath, cleanup := setupTestRepoForUninstall(t)
-	defer cleanup()
+	repoPath, projectPath := setupTestRepoForUninstall(t)
 
 	// Install a skill
 	installSymlink(t, projectPath, repoPath, resource.Skill, "pdf-processing")
@@ -471,8 +447,7 @@ func TestExpandUninstallPattern_ExactName(t *testing.T) {
 }
 
 func TestScanToolDir_Commands(t *testing.T) {
-	repoPath, projectPath, cleanup := setupTestRepoForUninstall(t)
-	defer cleanup()
+	repoPath, projectPath := setupTestRepoForUninstall(t)
 
 	// Install some commands
 	installSymlink(t, projectPath, repoPath, resource.Command, "test-command")
@@ -494,8 +469,7 @@ func TestScanToolDir_Commands(t *testing.T) {
 }
 
 func TestScanToolDir_Skills(t *testing.T) {
-	repoPath, projectPath, cleanup := setupTestRepoForUninstall(t)
-	defer cleanup()
+	repoPath, projectPath := setupTestRepoForUninstall(t)
 
 	// Install skills
 	installSymlink(t, projectPath, repoPath, resource.Skill, "pdf-processing")
@@ -583,8 +557,7 @@ func TestDeduplicateStrings(t *testing.T) {
 }
 
 func TestUninstallAll(t *testing.T) {
-	repoPath, projectPath, cleanup := setupTestRepoForUninstall(t)
-	defer cleanup()
+	repoPath, projectPath := setupTestRepoForUninstall(t)
 
 	// Install multiple resources
 	installSymlink(t, projectPath, repoPath, resource.Command, "test-command")
@@ -627,8 +600,7 @@ func TestUninstallAll(t *testing.T) {
 }
 
 func TestUninstallAll_OnlyRemovesManagedSymlinks(t *testing.T) {
-	repoPath, projectPath, cleanup := setupTestRepoForUninstall(t)
-	defer cleanup()
+	repoPath, projectPath := setupTestRepoForUninstall(t)
 
 	commandsDir := filepath.Join(projectPath, ".claude", "commands")
 
@@ -675,8 +647,7 @@ func TestUninstallAll_OnlyRemovesManagedSymlinks(t *testing.T) {
 }
 
 func TestUninstallAll_EmptyDirectory(t *testing.T) {
-	repoPath, projectPath, cleanup := setupTestRepoForUninstall(t)
-	defer cleanup()
+	repoPath, projectPath := setupTestRepoForUninstall(t)
 
 	// Run uninstallAll on empty directories
 	err := uninstallAll(projectPath, repoPath, []tools.Tool{tools.Claude})
@@ -779,8 +750,7 @@ func createTestPackageForUninstall(t *testing.T, repoPath, packageName string, r
 
 // TestUninstallMultipleSkills tests uninstalling multiple skills
 func TestUninstallMultipleSkills(t *testing.T) {
-	repoPath, projectPath, cleanup := setupTestRepoForUninstall(t)
-	defer cleanup()
+	repoPath, projectPath := setupTestRepoForUninstall(t)
 
 	// Install multiple skills
 	installSymlink(t, projectPath, repoPath, resource.Skill, "pdf-processing")
@@ -820,8 +790,7 @@ func TestUninstallMultipleSkills(t *testing.T) {
 
 // TestUninstallSkillAndPackage tests uninstalling a skill and verifying package handling
 func TestUninstallSkillAndPackage(t *testing.T) {
-	repoPath, projectPath, cleanup := setupTestRepoForUninstall(t)
-	defer cleanup()
+	repoPath, projectPath := setupTestRepoForUninstall(t)
 
 	// Create a test package
 	createTestPackageForUninstall(t, repoPath, "test-pkg", []string{"skill/pdf-processing", "skill/test-skill"})
@@ -839,8 +808,7 @@ func TestUninstallSkillAndPackage(t *testing.T) {
 
 // TestUninstallMultiplePackages tests verifying package structure
 func TestUninstallMultiplePackages(t *testing.T) {
-	repoPath, projectPath, cleanup := setupTestRepoForUninstall(t)
-	defer cleanup()
+	repoPath, projectPath := setupTestRepoForUninstall(t)
 
 	// Create test packages
 	createTestPackageForUninstall(t, repoPath, "pkg-a", []string{"skill/pdf-processing"})

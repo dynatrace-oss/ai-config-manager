@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/adrg/xdg"
@@ -483,7 +484,7 @@ func TestValidate_RepoPath(t *testing.T) {
 			repoPath:  "~/my-repo",
 			wantError: false,
 			checkPath: func(t *testing.T, path string) {
-				if contains(path, "~") {
+				if strings.Contains(path, "~") {
 					t.Errorf("path still contains ~: %q", path)
 				}
 				if !filepath.IsAbs(path) {
@@ -506,7 +507,7 @@ func TestValidate_RepoPath(t *testing.T) {
 			repoPath:  "/home/user/./repo",
 			wantError: false,
 			checkPath: func(t *testing.T, path string) {
-				if contains(path, "/.") {
+				if strings.Contains(path, "/.") {
 					t.Errorf("path still contains /.: %q", path)
 				}
 				if path != "/home/user/repo" {
@@ -519,7 +520,7 @@ func TestValidate_RepoPath(t *testing.T) {
 			repoPath:  "/home/user/foo/../repo",
 			wantError: false,
 			checkPath: func(t *testing.T, path string) {
-				if contains(path, "..") {
+				if strings.Contains(path, "..") {
 					t.Errorf("path still contains ..: %q", path)
 				}
 				if path != "/home/user/repo" {
@@ -532,13 +533,13 @@ func TestValidate_RepoPath(t *testing.T) {
 			repoPath:  "~/projects/ai-repo",
 			wantError: false,
 			checkPath: func(t *testing.T, path string) {
-				if contains(path, "~") {
+				if strings.Contains(path, "~") {
 					t.Errorf("path still contains ~: %q", path)
 				}
 				if !filepath.IsAbs(path) {
 					t.Errorf("path not absolute after expansion: %q", path)
 				}
-				if !contains(path, "projects/ai-repo") && !contains(path, "projects\\ai-repo") {
+				if !strings.Contains(path, "projects/ai-repo") && !strings.Contains(path, "projects\\ai-repo") {
 					t.Errorf("path = %q, want to contain projects/ai-repo", path)
 				}
 			},
@@ -583,7 +584,7 @@ func TestLoad_WithRepoPath(t *testing.T) {
 			name:     "tilde expansion",
 			repoPath: "~/custom-repo",
 			checkPath: func(t *testing.T, path string) {
-				if contains(path, "~") {
+				if strings.Contains(path, "~") {
 					t.Errorf("Repo.Path still contains ~: %q", path)
 				}
 				if !filepath.IsAbs(path) {
@@ -604,7 +605,7 @@ func TestLoad_WithRepoPath(t *testing.T) {
 			name:     "path with dots",
 			repoPath: "/tmp/../home/user/repo",
 			checkPath: func(t *testing.T, path string) {
-				if contains(path, "..") {
+				if strings.Contains(path, "..") {
 					t.Errorf("Repo.Path still contains ..: %q", path)
 				}
 				if path != "/home/user/repo" {
@@ -918,21 +919,6 @@ repo:
 	if cfg.Repo.Path != "/test/repo/path" {
 		t.Errorf("Repo.Path = %q, want /test/repo/path", cfg.Repo.Path)
 	}
-}
-
-// contains checks if a string contains a substring
-func contains(s, substr string) bool {
-	return len(substr) == 0 || len(s) >= len(substr) &&
-		(s == substr || len(s) > len(substr) && findSubstring(s, substr))
-}
-
-func findSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }
 
 // Test TypeMappings methods

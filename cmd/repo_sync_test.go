@@ -554,7 +554,7 @@ func TestRunSync_DefaultForce(t *testing.T) {
 	}
 
 	// Verify it contains the new content from source
-	if !contains(newContent, "Sync test command") {
+	if !strings.Contains(newContent, "Sync test command") {
 		t.Errorf("resource content doesn't match source after force update")
 		t.Logf("Content: %s", newContent)
 	}
@@ -585,7 +585,7 @@ func TestRunSync_NoSources(t *testing.T) {
 
 	// Check error message
 	expectedMsg := "no sync sources configured"
-	if !contains(err.Error(), expectedMsg) {
+	if !strings.Contains(err.Error(), expectedMsg) {
 		t.Errorf("error message doesn't contain expected text\nGot: %s\nWant substring: %s", err.Error(), expectedMsg)
 	}
 }
@@ -611,7 +611,7 @@ func TestRunSync_InvalidSource(t *testing.T) {
 	}
 
 	// Check error message indicates failure
-	if !contains(err.Error(), "all sources failed") {
+	if !strings.Contains(err.Error(), "all sources failed") {
 		t.Errorf("error message doesn't indicate all sources failed\nGot: %s", err.Error())
 	}
 }
@@ -963,7 +963,7 @@ func TestRunSync_MetadataCommitted(t *testing.T) {
 
 	logOutput := string(output)
 	expectedCommitMsg := "aimgr: update sync timestamps"
-	if !contains(logOutput, expectedCommitMsg) {
+	if !strings.Contains(logOutput, expectedCommitMsg) {
 		t.Errorf("Expected commit message %q not found in git log:\n%s", expectedCommitMsg, logOutput)
 	}
 
@@ -975,7 +975,7 @@ func TestRunSync_MetadataCommitted(t *testing.T) {
 	}
 
 	commitShow := string(output)
-	if !contains(commitShow, ".metadata/sources.json") {
+	if !strings.Contains(commitShow, ".metadata/sources.json") {
 		t.Error("Metadata commit should include .metadata/sources.json")
 	}
 }
@@ -1637,10 +1637,10 @@ func TestRunSync_RemovesOrphansWithGitCommit(t *testing.T) {
 		t.Fatalf("failed to get git log: %v", err)
 	}
 	logOutput := string(output)
-	if !contains(logOutput, "aimgr: remove command: pdf-command") {
+	if !strings.Contains(logOutput, "aimgr: remove command: pdf-command") {
 		t.Errorf("expected removal commit for pdf-command in git log, got:\n%s", logOutput)
 	}
-	if !contains(logOutput, "aimgr: remove skill: image-processing") {
+	if !strings.Contains(logOutput, "aimgr: remove skill: image-processing") {
 		t.Errorf("expected removal commit for image-processing in git log, got:\n%s", logOutput)
 	}
 }

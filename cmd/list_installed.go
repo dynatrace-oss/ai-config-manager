@@ -377,12 +377,12 @@ func isInstalledInTool(projectPath, name string, resType resource.ResourceType, 
 		if !toolInfo.SupportsCommands {
 			return false
 		}
-		checkPath = fmt.Sprintf("%s/%s/%s.md", projectPath, toolInfo.CommandsDir, name)
+		checkPath = filepath.Join(projectPath, toolInfo.CommandsDir, name+".md")
 	case resource.Skill:
 		if !toolInfo.SupportsSkills {
 			return false
 		}
-		checkPath = fmt.Sprintf("%s/%s/%s", projectPath, toolInfo.SkillsDir, name)
+		checkPath = filepath.Join(projectPath, toolInfo.SkillsDir, name)
 	case resource.Agent:
 		if !toolInfo.SupportsAgents {
 			return false
