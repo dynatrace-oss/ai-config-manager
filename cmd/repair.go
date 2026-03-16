@@ -140,7 +140,7 @@ Use --dry-run to preview all planned actions without changing files.
 			result.Failed = append(result.Failed, RepairErr{IssueType: "manifest", Message: e.Error()})
 		}
 
-		reconcilePlan, err := buildReconcilePlan(projectPath, manager.GetRepoPath(), ownedDirs, expanded)
+		reconcilePlan, err := buildReconcilePlan(manager.GetRepoPath(), ownedDirs, expanded)
 		if err != nil {
 			return err
 		}
@@ -205,7 +205,7 @@ type reconcilePlan struct {
 	Removals []RepairAction
 }
 
-func buildReconcilePlan(projectPath, repoPath string, ownedDirs []OwnedResourceDir, declaredRefs []string) (reconcilePlan, error) {
+func buildReconcilePlan(repoPath string, ownedDirs []OwnedResourceDir, declaredRefs []string) (reconcilePlan, error) {
 	plan := reconcilePlan{
 		Installs: make([]RepairAction, 0),
 		Fixes:    make([]RepairAction, 0),
@@ -222,7 +222,7 @@ func buildReconcilePlan(projectPath, repoPath string, ownedDirs []OwnedResourceD
 			continue
 		}
 
-		paths := desiredInstallPaths(projectPath, ownedDirs, resType, resName)
+		paths := desiredInstallPaths(ownedDirs, resType, resName)
 		if len(paths) == 0 {
 			plan.Fixes = append(plan.Fixes, RepairAction{
 				Resource:    ref,
@@ -292,7 +292,7 @@ func applyReconcilePlan(projectPath string, manager *repo.Manager, ownedDirs []O
 
 	declaredFailures := 0
 	for _, action := range plan.Fixes {
-		if err := removeDeclaredPathsForRef(projectPath, ownedDirs, action.Resource); err != nil {
+		if err := removeDeclaredPathsForRef(ownedDirs, action.Resource); err != nil {
 			declaredFailures++
 			result.Failed = append(result.Failed, RepairErr{IssueType: action.IssueType, Resource: action.Resource, Message: err.Error()})
 			continue
@@ -355,7 +355,7 @@ type installPath struct {
 	path string
 }
 
-func desiredInstallPaths(projectPath string, ownedDirs []OwnedResourceDir, resType resource.ResourceType, resName string) []installPath {
+func desiredInstallPaths(ownedDirs []OwnedResourceDir, resType resource.ResourceType, resName string) []installPath {
 	result := make([]installPath, 0)
 	for _, owned := range ownedDirs {
 		if owned.ResourceType != resType {
@@ -373,12 +373,12 @@ func desiredInstallPaths(projectPath string, ownedDirs []OwnedResourceDir, resTy
 	return result
 }
 
-func removeDeclaredPathsForRef(projectPath string, ownedDirs []OwnedResourceDir, ref string) error {
+func removeDeclaredPathsForRef(ownedDirs []OwnedResourceDir, ref string) error {
 	resType, resName, err := resource.ParseResourceReference(ref)
 	if err != nil {
 		return err
 	}
-	for _, p := range desiredInstallPaths(projectPath, ownedDirs, resType, resName) {
+	for _, p := range desiredInstallPaths(ownedDirs, resType, resName) {
 		_, statErr := os.Lstat(p.path)
 		if os.IsNotExist(statErr) {
 			continue

@@ -495,7 +495,7 @@ func findUndeclaredInOwnedDirs(mf *manifest.Manifest, projectPath string, repoPa
 		if err != nil {
 			continue
 		}
-		for _, p := range desiredInstallPaths(projectPath, ownedDirs, resType, resName) {
+		for _, p := range desiredInstallPaths(ownedDirs, resType, resName) {
 			declaredPaths[p.path] = struct{}{}
 		}
 	}
@@ -711,7 +711,7 @@ func runVerifyFixWrapper(projectPath string, manager *repo.Manager, parsedFormat
 		result.Failed = append(result.Failed, RepairErr{IssueType: "manifest", Message: e.Error()})
 	}
 
-	plan, err := buildReconcilePlan(projectPath, manager.GetRepoPath(), ownedDirs, expanded)
+	plan, err := buildReconcilePlan(manager.GetRepoPath(), ownedDirs, expanded)
 	if err != nil {
 		return err
 	}
@@ -733,7 +733,7 @@ func runVerifyFixWrapper(projectPath string, manager *repo.Manager, parsedFormat
 	return repairDisplayResult(result, repairFormat)
 }
 
-func fixVerifyIssues(projectPath string, issues []VerifyIssue, repoManager *repo.Manager) error {
+func fixVerifyIssues(projectPath string, issues []VerifyIssue, repoManager *repo.Manager) {
 	fixed := 0
 	failed := 0
 
@@ -868,7 +868,6 @@ func fixVerifyIssues(projectPath string, issues []VerifyIssue, repoManager *repo
 		fmt.Printf("✗ Failed to fix %d issue(s)\n", failed)
 	}
 
-	return nil
 }
 
 // parseResourceFromIssue extracts the resource type and name from a VerifyIssue.

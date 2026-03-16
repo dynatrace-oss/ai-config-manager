@@ -793,10 +793,7 @@ func TestFixVerifyIssues_ReinstallsBrokenSkill(t *testing.T) {
 	}
 
 	// Call fixVerifyIssues
-	err := fixVerifyIssues(projectDir, issues, manager)
-	if err != nil {
-		t.Fatalf("fixVerifyIssues returned error: %v", err)
-	}
+	fixVerifyIssues(projectDir, issues, manager)
 
 	// Verify the symlink is now valid
 	targetInfo, err := os.Stat(brokenSymlink)
@@ -853,10 +850,7 @@ func TestFixVerifyIssues_ReportsUnrecoverableResource(t *testing.T) {
 	}
 
 	// Call fixVerifyIssues
-	err := fixVerifyIssues(projectDir, issues, manager)
-	if err != nil {
-		t.Fatalf("fixVerifyIssues returned error: %v", err)
-	}
+	fixVerifyIssues(projectDir, issues, manager)
 
 	// Verify the broken symlink was removed
 	if _, err := os.Lstat(brokenSymlink); err == nil {
@@ -908,10 +902,7 @@ func TestFixVerifyIssues_InstallsNotInstalledResource(t *testing.T) {
 	}
 
 	// Call fixVerifyIssues
-	err := fixVerifyIssues(projectDir, issues, manager)
-	if err != nil {
-		t.Fatalf("fixVerifyIssues returned error: %v", err)
-	}
+	fixVerifyIssues(projectDir, issues, manager)
 
 	// Verify the skill is now installed
 	installedSymlink := filepath.Join(skillsDir, "missing-skill")
@@ -988,10 +979,7 @@ func TestFixVerifyIssues_WrongRepoReinstalls(t *testing.T) {
 	}
 
 	// Call fixVerifyIssues
-	err := fixVerifyIssues(projectDir, issues, manager)
-	if err != nil {
-		t.Fatalf("fixVerifyIssues returned error: %v", err)
-	}
+	fixVerifyIssues(projectDir, issues, manager)
 
 	// Verify the symlink now points to the correct repo
 	actualTarget, err := os.Readlink(wrongSymlink)

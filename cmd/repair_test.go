@@ -86,7 +86,7 @@ func TestRepairBuildReconcilePlan_DetectsFixInstallAndRemoval(t *testing.T) {
 	}
 
 	declared := []string{"skill/declared-fix", "skill/declared-missing"}
-	plan, err := buildReconcilePlan(projectDir, repoDir, owned, declared)
+	plan, err := buildReconcilePlan(repoDir, owned, declared)
 	if err != nil {
 		t.Fatalf("buildReconcilePlan failed: %v", err)
 	}
@@ -118,7 +118,7 @@ func TestRepairDryRun_DoesNotModifyFilesystem(t *testing.T) {
 		t.Fatalf("write undeclared: %v", err)
 	}
 
-	plan, err := buildReconcilePlan(projectDir, repoDir, owned, []string{})
+	plan, err := buildReconcilePlan(repoDir, owned, []string{})
 	if err != nil {
 		t.Fatalf("build plan: %v", err)
 	}
