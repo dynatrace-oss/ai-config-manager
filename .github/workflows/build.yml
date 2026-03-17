@@ -17,6 +17,20 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
+      - name: Validate install.sh syntax
+        run: bash -n scripts/install.sh
+
+      - name: Validate install.ps1 syntax
+        shell: pwsh
+        run: |
+          $errors = $null
+          $tokens = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD 'scripts/install.ps1'), [ref]$tokens, [ref]$errors) > $null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { $_.ToString() }
+            exit 1
+          }
+
       - name: Configure Git
         run: |
           git config --global user.email "ci@github.actions"

@@ -56,16 +56,17 @@ Stdin support exists as a convenience for advanced workflows, but it is not the 
 
 ## Installation
 
-Download the binary for your platform from the [Releases page](https://github.com/dynatrace-oss/ai-config-manager/releases):
+Use the one-line installer for your shell:
 
-| Platform | Command |
-|----------|---------|
-| Linux (amd64) | `curl -L https://github.com/dynatrace-oss/ai-config-manager/releases/latest/download/aimgr_VERSION_linux_amd64.tar.gz \| tar xz && sudo mv aimgr /usr/local/bin/` |
-| Linux (arm64) | `curl -L https://github.com/dynatrace-oss/ai-config-manager/releases/latest/download/aimgr_VERSION_linux_arm64.tar.gz \| tar xz && sudo mv aimgr /usr/local/bin/` |
-| macOS (Intel) | `curl -L https://github.com/dynatrace-oss/ai-config-manager/releases/latest/download/aimgr_VERSION_darwin_amd64.tar.gz \| tar xz && sudo mv aimgr /usr/local/bin/` |
-| macOS (Apple Silicon) | `curl -L https://github.com/dynatrace-oss/ai-config-manager/releases/latest/download/aimgr_VERSION_darwin_arm64.tar.gz \| tar xz && sudo mv aimgr /usr/local/bin/` |
+```bash
+curl -fsSL https://raw.githubusercontent.com/dynatrace-oss/ai-config-manager/main/scripts/install.sh | sh
+```
 
-*Replace `VERSION` with the actual version (e.g., `v0.1.0`).*
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/dynatrace-oss/ai-config-manager/main/scripts/install.ps1 | iex"
+```
+
+The installer downloads the correct release asset for your OS and CPU architecture automatically. Set `AIMGR_VERSION` to install a specific release or `AIMGR_INSTALL_DIR` to override the install location.
 
 Verify installation:
 ```bash

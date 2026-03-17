@@ -43,9 +43,23 @@ A command-line tool for discovering, installing, and managing AI resources (comm
 
 ## Installation
 
-### Using Go (Recommended)
+### One-line installer
 
-The easiest way to install `aimgr` is using Go:
+Install the latest release with a bootstrap script:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/dynatrace-oss/ai-config-manager/main/scripts/install.sh | sh
+```
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/dynatrace-oss/ai-config-manager/main/scripts/install.ps1 | iex"
+```
+
+Use `AIMGR_VERSION` to pin a release or `AIMGR_INSTALL_DIR` to override the install location.
+
+### Using Go
+
+If you already have Go installed, you can also install `aimgr` with:
 
 ```bash
 go install github.com/dynatrace-oss/ai-config-manager/v3/cmd/aimgr@latest
@@ -65,7 +79,7 @@ make install
 make build
 ```
 
-**Note:** Precompiled binaries are not currently available. Please use one of the above installation methods.
+Precompiled binaries are published on the [GitHub Releases](https://github.com/dynatrace-oss/ai-config-manager/releases) page.
 
 ## Quick Start
 
