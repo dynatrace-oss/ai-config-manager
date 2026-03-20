@@ -922,6 +922,7 @@ func (m *Manager) isValidCache(cachePath string) bool {
 func (m *Manager) loadMetadata() (*CacheMetadata, error) {
 	metadataPath := filepath.Join(m.workspaceDir, ".cache-metadata.json")
 
+	// #nosec G703 -- metadataPath is the repository-scoped workspace metadata file under workspaceDir.
 	data, err := os.ReadFile(metadataPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -1071,6 +1072,7 @@ func (m *Manager) cloneRepo(url string, cachePath string, ref string) error {
 			)
 		}
 		// Clean up partial clone on failure
+		// #nosec G703 -- cachePath is derived from the normalized URL hash under workspaceDir.
 		_ = os.RemoveAll(cachePath)
 		return fmt.Errorf("git clone failed: %w\nOutput: %s", err, string(output))
 	}
