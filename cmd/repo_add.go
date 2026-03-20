@@ -644,15 +644,10 @@ func addBulkFromLocalWithFilter(localPath string, manager *repo.Manager, filter 
 // addBulkFromLocalWithMode handles bulk add from a local folder or single file with custom filter and import mode.
 // If sourceName is non-empty it is used as-is; otherwise the name is derived from --name flag or filepath.Base.
 func addBulkFromLocalWithMode(localPath string, manager *repo.Manager, filter []string, sourceID string, importMode string, sourceName string) error {
-	// Validate path exists
-	if _, err := os.Stat(localPath); err != nil {
-		return fmt.Errorf("path does not exist: %s", localPath)
-	}
-
-	// Check if it's a file or directory
+	// Validate path and check if it's a file or directory
 	info, err := os.Stat(localPath)
 	if err != nil {
-		return err
+		return fmt.Errorf("path does not exist: %s", localPath)
 	}
 
 	// If it's a single file, handle it specially

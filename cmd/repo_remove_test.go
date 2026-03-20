@@ -15,36 +15,42 @@ import (
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/sourcemetadata"
 )
 
-func TestRepoRemove_ByName(t *testing.T) {
-	// Create temp directory for test repo
+func setupRemoveTestRepo(t *testing.T, sources ...*repomanifest.Source) (string, *repo.Manager, *repomanifest.Manifest) {
+	t.Helper()
+
 	tempDir := t.TempDir()
-
-	// Create repo manager
 	mgr := repo.NewManagerWithPath(tempDir)
-
-	// Initialize repo
 	if err := mgr.Init(); err != nil {
 		t.Fatalf("Failed to initialize repo: %v", err)
 	}
 
-	// Add a source to the manifest
 	manifest, err := repomanifest.Load(tempDir)
 	if err != nil {
 		t.Fatalf("Failed to load manifest: %v", err)
 	}
 
+	for _, source := range sources {
+		if err := manifest.AddSource(source); err != nil {
+			t.Fatalf("Failed to add source: %v", err)
+		}
+	}
+
+	if len(sources) > 0 {
+		if err := manifest.Save(tempDir); err != nil {
+			t.Fatalf("Failed to save manifest: %v", err)
+		}
+	}
+
+	return tempDir, mgr, manifest
+}
+
+func TestRepoRemove_ByName(t *testing.T) {
 	source := &repomanifest.Source{
 		Name: "test-source",
 		Path: "/home/user/resources",
 	}
 
-	if err := manifest.AddSource(source); err != nil {
-		t.Fatalf("Failed to add source: %v", err)
-	}
-
-	if err := manifest.Save(tempDir); err != nil {
-		t.Fatalf("Failed to save manifest: %v", err)
-	}
+	tempDir, mgr, _ := setupRemoveTestRepo(t, source)
 
 	// Add a test resource with metadata pointing to this source
 	commandPath := filepath.Join(tempDir, "commands", "test-command.md")
@@ -72,7 +78,7 @@ description: Test command
 	}
 
 	// Verify source exists
-	manifest, _ = repomanifest.Load(tempDir)
+	manifest, _ := repomanifest.Load(tempDir)
 	if !manifest.HasSource("test-source") {
 		t.Fatal("Source should exist before removal")
 	}
@@ -106,36 +112,13 @@ description: Test command
 }
 
 func TestRepoRemove_ByPath(t *testing.T) {
-	// Create temp directory for test repo
-	tempDir := t.TempDir()
-
-	// Create repo manager
-	mgr := repo.NewManagerWithPath(tempDir)
-
-	// Initialize repo
-	if err := mgr.Init(); err != nil {
-		t.Fatalf("Failed to initialize repo: %v", err)
-	}
-
-	// Add a source to the manifest
-	manifest, err := repomanifest.Load(tempDir)
-	if err != nil {
-		t.Fatalf("Failed to load manifest: %v", err)
-	}
-
 	sourcePath := "/home/user/my-resources"
 	source := &repomanifest.Source{
 		Name: "my-resources",
 		Path: sourcePath,
 	}
 
-	if err := manifest.AddSource(source); err != nil {
-		t.Fatalf("Failed to add source: %v", err)
-	}
-
-	if err := manifest.Save(tempDir); err != nil {
-		t.Fatalf("Failed to save manifest: %v", err)
-	}
+	tempDir, mgr, _ := setupRemoveTestRepo(t, source)
 
 	// Remove the source by path
 	if err := performRemove(mgr, sourcePath, false, false); err != nil {
@@ -143,43 +126,20 @@ func TestRepoRemove_ByPath(t *testing.T) {
 	}
 
 	// Verify source is removed
-	manifest, _ = repomanifest.Load(tempDir)
+	manifest, _ := repomanifest.Load(tempDir)
 	if manifest.HasSource(sourcePath) {
 		t.Error("Source should not exist after removal")
 	}
 }
 
 func TestRepoRemove_ByURL(t *testing.T) {
-	// Create temp directory for test repo
-	tempDir := t.TempDir()
-
-	// Create repo manager
-	mgr := repo.NewManagerWithPath(tempDir)
-
-	// Initialize repo
-	if err := mgr.Init(); err != nil {
-		t.Fatalf("Failed to initialize repo: %v", err)
-	}
-
-	// Add a source to the manifest
-	manifest, err := repomanifest.Load(tempDir)
-	if err != nil {
-		t.Fatalf("Failed to load manifest: %v", err)
-	}
-
 	sourceURL := "https://github.com/owner/repo"
 	source := &repomanifest.Source{
 		Name: "owner-repo",
 		URL:  sourceURL,
 	}
 
-	if err := manifest.AddSource(source); err != nil {
-		t.Fatalf("Failed to add source: %v", err)
-	}
-
-	if err := manifest.Save(tempDir); err != nil {
-		t.Fatalf("Failed to save manifest: %v", err)
-	}
+	tempDir, mgr, _ := setupRemoveTestRepo(t, source)
 
 	// Remove the source by URL
 	if err := performRemove(mgr, sourceURL, false, false); err != nil {
@@ -187,42 +147,19 @@ func TestRepoRemove_ByURL(t *testing.T) {
 	}
 
 	// Verify source is removed
-	manifest, _ = repomanifest.Load(tempDir)
+	manifest, _ := repomanifest.Load(tempDir)
 	if manifest.HasSource(sourceURL) {
 		t.Error("Source should not exist after removal")
 	}
 }
 
 func TestRepoRemove_DryRun(t *testing.T) {
-	// Create temp directory for test repo
-	tempDir := t.TempDir()
-
-	// Create repo manager
-	mgr := repo.NewManagerWithPath(tempDir)
-
-	// Initialize repo
-	if err := mgr.Init(); err != nil {
-		t.Fatalf("Failed to initialize repo: %v", err)
-	}
-
-	// Add a source to the manifest
-	manifest, err := repomanifest.Load(tempDir)
-	if err != nil {
-		t.Fatalf("Failed to load manifest: %v", err)
-	}
-
 	source := &repomanifest.Source{
 		Name: "test-source",
 		Path: "/home/user/resources",
 	}
 
-	if err := manifest.AddSource(source); err != nil {
-		t.Fatalf("Failed to add source: %v", err)
-	}
-
-	if err := manifest.Save(tempDir); err != nil {
-		t.Fatalf("Failed to save manifest: %v", err)
-	}
+	tempDir, mgr, _ := setupRemoveTestRepo(t, source)
 
 	// Add a test resource
 	commandPath := filepath.Join(tempDir, "commands", "test-command.md")
@@ -255,7 +192,7 @@ description: Test command
 	}
 
 	// Verify source still exists (not actually removed)
-	manifest, _ = repomanifest.Load(tempDir)
+	manifest, _ := repomanifest.Load(tempDir)
 	if !manifest.HasSource("test-source") {
 		t.Error("Source should still exist after dry-run")
 	}
@@ -267,35 +204,12 @@ description: Test command
 }
 
 func TestRepoRemove_KeepResources(t *testing.T) {
-	// Create temp directory for test repo
-	tempDir := t.TempDir()
-
-	// Create repo manager
-	mgr := repo.NewManagerWithPath(tempDir)
-
-	// Initialize repo
-	if err := mgr.Init(); err != nil {
-		t.Fatalf("Failed to initialize repo: %v", err)
-	}
-
-	// Add a source to the manifest
-	manifest, err := repomanifest.Load(tempDir)
-	if err != nil {
-		t.Fatalf("Failed to load manifest: %v", err)
-	}
-
 	source := &repomanifest.Source{
 		Name: "test-source",
 		Path: "/home/user/resources",
 	}
 
-	if err := manifest.AddSource(source); err != nil {
-		t.Fatalf("Failed to add source: %v", err)
-	}
-
-	if err := manifest.Save(tempDir); err != nil {
-		t.Fatalf("Failed to save manifest: %v", err)
-	}
+	tempDir, mgr, _ := setupRemoveTestRepo(t, source)
 
 	// Add a test resource
 	commandPath := filepath.Join(tempDir, "commands", "test-command.md")
@@ -328,7 +242,7 @@ description: Test command
 	}
 
 	// Verify source is removed from manifest
-	manifest, _ = repomanifest.Load(tempDir)
+	manifest, _ := repomanifest.Load(tempDir)
 	if manifest.HasSource("test-source") {
 		t.Error("Source should not exist after removal")
 	}
@@ -340,16 +254,7 @@ description: Test command
 }
 
 func TestRepoRemove_NotFound(t *testing.T) {
-	// Create temp directory for test repo
-	tempDir := t.TempDir()
-
-	// Create repo manager
-	mgr := repo.NewManagerWithPath(tempDir)
-
-	// Initialize repo
-	if err := mgr.Init(); err != nil {
-		t.Fatalf("Failed to initialize repo: %v", err)
-	}
+	_, mgr, _ := setupRemoveTestRepo(t)
 
 	// Try to remove non-existent source
 	err := performRemove(mgr, "nonexistent-source", false, false)
@@ -364,35 +269,12 @@ func TestRepoRemove_NotFound(t *testing.T) {
 }
 
 func TestRepoRemove_MultipleResources(t *testing.T) {
-	// Create temp directory for test repo
-	tempDir := t.TempDir()
-
-	// Create repo manager
-	mgr := repo.NewManagerWithPath(tempDir)
-
-	// Initialize repo
-	if err := mgr.Init(); err != nil {
-		t.Fatalf("Failed to initialize repo: %v", err)
-	}
-
-	// Add a source to the manifest
-	manifest, err := repomanifest.Load(tempDir)
-	if err != nil {
-		t.Fatalf("Failed to load manifest: %v", err)
-	}
-
 	source := &repomanifest.Source{
 		Name: "test-source",
 		Path: "/home/user/resources",
 	}
 
-	if err := manifest.AddSource(source); err != nil {
-		t.Fatalf("Failed to add source: %v", err)
-	}
-
-	if err := manifest.Save(tempDir); err != nil {
-		t.Fatalf("Failed to save manifest: %v", err)
-	}
+	tempDir, mgr, _ := setupRemoveTestRepo(t, source)
 
 	// Add multiple test resources
 	commandPath := filepath.Join(tempDir, "commands", "test-command.md")
@@ -454,7 +336,7 @@ description: Test skill
 	}
 
 	// Verify source is removed
-	manifest, _ = repomanifest.Load(tempDir)
+	manifest, _ := repomanifest.Load(tempDir)
 	if manifest.HasSource("test-source") {
 		t.Error("Source should not exist after removal")
 	}
@@ -469,35 +351,12 @@ description: Test skill
 }
 
 func TestRepoRemove_GitCommit(t *testing.T) {
-	// Create temp directory for test repo
-	tempDir := t.TempDir()
-
-	// Create repo manager
-	mgr := repo.NewManagerWithPath(tempDir)
-
-	// Initialize repo (creates git repo)
-	if err := mgr.Init(); err != nil {
-		t.Fatalf("Failed to initialize repo: %v", err)
-	}
-
-	// Add a source to the manifest
-	manifest, err := repomanifest.Load(tempDir)
-	if err != nil {
-		t.Fatalf("Failed to load manifest: %v", err)
-	}
-
 	source := &repomanifest.Source{
 		Name: "test-source",
 		Path: "/home/user/resources",
 	}
 
-	if err := manifest.AddSource(source); err != nil {
-		t.Fatalf("Failed to add source: %v", err)
-	}
-
-	if err := manifest.Save(tempDir); err != nil {
-		t.Fatalf("Failed to save manifest: %v", err)
-	}
+	tempDir, mgr, _ := setupRemoveTestRepo(t, source)
 
 	// Commit the initial state
 	if err := mgr.CommitChangesForPaths("test: add source", []string{repomanifest.ManifestFileName}); err != nil {
@@ -575,23 +434,6 @@ func TestRepoRemove_GitCommit(t *testing.T) {
 }
 
 func TestRepoRemove_OnlyOrphansFromSource(t *testing.T) {
-	// Create temp directory for test repo
-	tempDir := t.TempDir()
-
-	// Create repo manager
-	mgr := repo.NewManagerWithPath(tempDir)
-
-	// Initialize repo
-	if err := mgr.Init(); err != nil {
-		t.Fatalf("Failed to initialize repo: %v", err)
-	}
-
-	// Add two sources to the manifest
-	manifest, err := repomanifest.Load(tempDir)
-	if err != nil {
-		t.Fatalf("Failed to load manifest: %v", err)
-	}
-
 	source1 := &repomanifest.Source{
 		Name: "source-1",
 		Path: "/home/user/resources1",
@@ -601,16 +443,7 @@ func TestRepoRemove_OnlyOrphansFromSource(t *testing.T) {
 		Path: "/home/user/resources2",
 	}
 
-	if err := manifest.AddSource(source1); err != nil {
-		t.Fatalf("Failed to add source 1: %v", err)
-	}
-	if err := manifest.AddSource(source2); err != nil {
-		t.Fatalf("Failed to add source 2: %v", err)
-	}
-
-	if err := manifest.Save(tempDir); err != nil {
-		t.Fatalf("Failed to save manifest: %v", err)
-	}
+	tempDir, mgr, _ := setupRemoveTestRepo(t, source1, source2)
 
 	// Add resources from both sources
 	command1Path := filepath.Join(tempDir, "commands", "command1.md")
@@ -666,7 +499,7 @@ description: Command from source 2
 	}
 
 	// Verify source-1 is removed but source-2 still exists
-	manifest, _ = repomanifest.Load(tempDir)
+	manifest, _ := repomanifest.Load(tempDir)
 	if manifest.HasSource("source-1") {
 		t.Error("source-1 should not exist after removal")
 	}
@@ -684,29 +517,12 @@ description: Command from source 2
 }
 
 func TestRepoRemove_CleansUpSourceMetadata(t *testing.T) {
-	tempDir := t.TempDir()
-	mgr := repo.NewManagerWithPath(tempDir)
-
-	if err := mgr.Init(); err != nil {
-		t.Fatalf("Failed to initialize repo: %v", err)
-	}
-
-	// Add a source to the manifest
-	manifest, err := repomanifest.Load(tempDir)
-	if err != nil {
-		t.Fatalf("Failed to load manifest: %v", err)
-	}
-
 	source := &repomanifest.Source{
 		Name: "test-source",
 		Path: "/home/user/resources",
 	}
-	if err := manifest.AddSource(source); err != nil {
-		t.Fatalf("Failed to add source: %v", err)
-	}
-	if err := manifest.Save(tempDir); err != nil {
-		t.Fatalf("Failed to save manifest: %v", err)
-	}
+
+	tempDir, mgr, _ := setupRemoveTestRepo(t, source)
 
 	// Create source metadata entry
 	srcMeta, err := sourcemetadata.Load(tempDir)
@@ -741,29 +557,12 @@ func TestRepoRemove_CleansUpSourceMetadata(t *testing.T) {
 }
 
 func TestRepoRemove_CleansUpSourceMetadata_KeepResources(t *testing.T) {
-	tempDir := t.TempDir()
-	mgr := repo.NewManagerWithPath(tempDir)
-
-	if err := mgr.Init(); err != nil {
-		t.Fatalf("Failed to initialize repo: %v", err)
-	}
-
-	// Add a source to the manifest
-	manifest, err := repomanifest.Load(tempDir)
-	if err != nil {
-		t.Fatalf("Failed to load manifest: %v", err)
-	}
-
 	source := &repomanifest.Source{
 		Name: "test-source",
 		Path: "/home/user/resources",
 	}
-	if err := manifest.AddSource(source); err != nil {
-		t.Fatalf("Failed to add source: %v", err)
-	}
-	if err := manifest.Save(tempDir); err != nil {
-		t.Fatalf("Failed to save manifest: %v", err)
-	}
+
+	tempDir, mgr, _ := setupRemoveTestRepo(t, source)
 
 	// Add a test resource so we can verify it's kept
 	commandPath := filepath.Join(tempDir, "commands", "test-command.md")
@@ -824,36 +623,18 @@ description: Test command
 func TestRepoRemove_RenamedSourceMatchesByID(t *testing.T) {
 	// Test that resources are found as orphans even after a source is renamed,
 	// because the source ID stays the same (it's based on path/URL, not name).
-	tempDir := t.TempDir()
-
-	mgr := repo.NewManagerWithPath(tempDir)
-	if err := mgr.Init(); err != nil {
-		t.Fatalf("Failed to initialize repo: %v", err)
-	}
-
-	// Step 1: Add source with original name
-	manifest, err := repomanifest.Load(tempDir)
-	if err != nil {
-		t.Fatalf("Failed to load manifest: %v", err)
-	}
-
 	source := &repomanifest.Source{
 		Name: "original-name",
 		Path: "/home/user/my-resources",
 	}
 
-	if err := manifest.AddSource(source); err != nil {
-		t.Fatalf("Failed to add source: %v", err)
-	}
+	// Step 1: Add source with original name
+	tempDir, mgr, _ := setupRemoveTestRepo(t, source)
 
 	// AddSource auto-generates ID; capture it
 	sourceID := source.ID
 	if sourceID == "" {
 		t.Fatal("Expected source to have an auto-generated ID")
-	}
-
-	if err := manifest.Save(tempDir); err != nil {
-		t.Fatalf("Failed to save manifest: %v", err)
 	}
 
 	// Step 2: Add a resource with metadata that has both source_name and source_id
@@ -883,7 +664,7 @@ description: A test command
 
 	// Step 3: Rename source in manifest (simulating manual edit of ai.repo.yaml).
 	// The path stays the same, so the ID stays the same.
-	manifest, err = repomanifest.Load(tempDir)
+	manifest, err := repomanifest.Load(tempDir)
 	if err != nil {
 		t.Fatalf("Failed to reload manifest: %v", err)
 	}
@@ -938,28 +719,12 @@ description: A test command
 func TestRepoRemove_LegacyResourceWithoutSourceID(t *testing.T) {
 	// Test backward compatibility: resources without source_id should still be
 	// matched by source_name.
-	tempDir := t.TempDir()
-
-	mgr := repo.NewManagerWithPath(tempDir)
-	if err := mgr.Init(); err != nil {
-		t.Fatalf("Failed to initialize repo: %v", err)
-	}
-
-	manifest, err := repomanifest.Load(tempDir)
-	if err != nil {
-		t.Fatalf("Failed to load manifest: %v", err)
-	}
-
 	source := &repomanifest.Source{
 		Name: "legacy-source",
 		Path: "/home/user/legacy",
 	}
-	if err := manifest.AddSource(source); err != nil {
-		t.Fatalf("Failed to add source: %v", err)
-	}
-	if err := manifest.Save(tempDir); err != nil {
-		t.Fatalf("Failed to save manifest: %v", err)
-	}
+
+	tempDir, mgr, _ := setupRemoveTestRepo(t, source)
 
 	// Add a resource with metadata that has source_name but NO source_id (legacy)
 	commandPath := filepath.Join(tempDir, "commands", "legacy-cmd.md")
@@ -1000,28 +765,13 @@ description: Legacy command
 // TestRepoRemove_WarnsAboutProjectSymlinks tests that removing orphaned resources
 // emits a warning about potentially breaking project symlinks.
 func TestRepoRemove_WarnsAboutProjectSymlinks(t *testing.T) {
-	tempDir := t.TempDir()
-	mgr := repo.NewManagerWithPath(tempDir)
-	if err := mgr.Init(); err != nil {
-		t.Fatalf("Failed to initialize repo: %v", err)
-	}
-
-	manifest, err := repomanifest.Load(tempDir)
-	if err != nil {
-		t.Fatalf("Failed to load manifest: %v", err)
-	}
-
 	source := &repomanifest.Source{
 		Name: "warn-source",
 		Path: "/home/user/resources",
 		ID:   "src-warn",
 	}
-	if err := manifest.AddSource(source); err != nil {
-		t.Fatalf("Failed to add source: %v", err)
-	}
-	if err := manifest.Save(tempDir); err != nil {
-		t.Fatalf("Failed to save manifest: %v", err)
-	}
+
+	tempDir, mgr, _ := setupRemoveTestRepo(t, source)
 
 	// Add a test resource with metadata pointing to this source
 	commandPath := filepath.Join(tempDir, "commands", "warn-cmd.md")
@@ -1048,7 +798,7 @@ func TestRepoRemove_WarnsAboutProjectSymlinks(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stderr = w
 
-	err = performRemove(mgr, "warn-source", false, false)
+	err := performRemove(mgr, "warn-source", false, false)
 
 	// Restore stderr and read captured output
 	w.Close()
@@ -1076,28 +826,13 @@ func TestRepoRemove_WarnsAboutProjectSymlinks(t *testing.T) {
 // TestRepoRemove_WarnsAboutProjectSymlinks_DryRun tests that the warning
 // is also shown in dry-run mode.
 func TestRepoRemove_WarnsAboutProjectSymlinks_DryRun(t *testing.T) {
-	tempDir := t.TempDir()
-	mgr := repo.NewManagerWithPath(tempDir)
-	if err := mgr.Init(); err != nil {
-		t.Fatalf("Failed to initialize repo: %v", err)
-	}
-
-	manifest, err := repomanifest.Load(tempDir)
-	if err != nil {
-		t.Fatalf("Failed to load manifest: %v", err)
-	}
-
 	source := &repomanifest.Source{
 		Name: "dryrun-warn-source",
 		Path: "/home/user/resources",
 		ID:   "src-dryrun-warn",
 	}
-	if err := manifest.AddSource(source); err != nil {
-		t.Fatalf("Failed to add source: %v", err)
-	}
-	if err := manifest.Save(tempDir); err != nil {
-		t.Fatalf("Failed to save manifest: %v", err)
-	}
+
+	tempDir, mgr, _ := setupRemoveTestRepo(t, source)
 
 	// Add a test resource
 	commandPath := filepath.Join(tempDir, "commands", "dryrun-cmd.md")
@@ -1124,7 +859,7 @@ func TestRepoRemove_WarnsAboutProjectSymlinks_DryRun(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stderr = w
 
-	err = performRemove(mgr, "dryrun-warn-source", true, false) // dry-run = true
+	err := performRemove(mgr, "dryrun-warn-source", true, false) // dry-run = true
 
 	// Restore stderr and read captured output
 	w.Close()
@@ -1151,28 +886,13 @@ func TestRepoRemove_WarnsAboutProjectSymlinks_DryRun(t *testing.T) {
 // TestRepoRemove_NoWarningWhenKeepResources tests that no symlink warning
 // is emitted when --keep-resources is used (since resources won't break).
 func TestRepoRemove_NoWarningWhenKeepResources(t *testing.T) {
-	tempDir := t.TempDir()
-	mgr := repo.NewManagerWithPath(tempDir)
-	if err := mgr.Init(); err != nil {
-		t.Fatalf("Failed to initialize repo: %v", err)
-	}
-
-	manifest, err := repomanifest.Load(tempDir)
-	if err != nil {
-		t.Fatalf("Failed to load manifest: %v", err)
-	}
-
 	source := &repomanifest.Source{
 		Name: "keep-source",
 		Path: "/home/user/resources",
 		ID:   "src-keep",
 	}
-	if err := manifest.AddSource(source); err != nil {
-		t.Fatalf("Failed to add source: %v", err)
-	}
-	if err := manifest.Save(tempDir); err != nil {
-		t.Fatalf("Failed to save manifest: %v", err)
-	}
+
+	tempDir, mgr, _ := setupRemoveTestRepo(t, source)
 
 	// Add a test resource
 	commandPath := filepath.Join(tempDir, "commands", "keep-cmd.md")
@@ -1199,7 +919,7 @@ func TestRepoRemove_NoWarningWhenKeepResources(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stderr = w
 
-	err = performRemove(mgr, "keep-source", false, true) // keepResources = true
+	err := performRemove(mgr, "keep-source", false, true) // keepResources = true
 
 	w.Close()
 	os.Stderr = oldStderr

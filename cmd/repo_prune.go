@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/giturl"
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/metadata"
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/output"
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/repo"
@@ -342,18 +343,7 @@ func isGitSource(sourceType string) bool {
 
 // normalizeURL normalizes a Git URL for consistent comparison
 func normalizeURL(url string) string {
-	normalized := strings.TrimSpace(url)
-	normalized = strings.ToLower(normalized)
-	// Strip .git and / in a loop to handle cases like "/.git" or ".git/"
-	for {
-		oldNormalized := normalized
-		normalized = strings.TrimSuffix(normalized, "/")
-		normalized = strings.TrimSuffix(normalized, ".git")
-		if normalized == oldNormalized {
-			break
-		}
-	}
-	return normalized
+	return giturl.NormalizeURL(url)
 }
 
 // getDirSize calculates the total size of a directory in bytes

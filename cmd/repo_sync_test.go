@@ -1483,6 +1483,76 @@ func TestRunSync_RemoteSourceRefreshesStaleCache(t *testing.T) {
 	}
 }
 
+func TestRunSync_RemoteSourceTrickyURLStableAcrossSyncAndPrune(t *testing.T) {
+	remoteOrigin, worktreePath := createRemoteGitSource(t)
+	writeAndCommitRemoteCommand(t, worktreePath, "remote-command", "version one")
+
+	trickyURL := "https://example.com/test/remote.git/"
+	canonicalURL := "https://example.com/test/remote"
+
+	sources := []*repomanifest.Source{{
+		Name: "remote-source",
+		URL:  trickyURL,
+	}}
+	repoPath, cleanup := setupTestManifest(t, sources)
+	defer cleanup()
+
+	workspaceManager, err := workspace.NewManager(repoPath)
+	if err != nil {
+		t.Fatalf("failed to create workspace manager: %v", err)
+	}
+
+	cacheRepoPath := filepath.Join(repoPath, ".workspace", workspace.ComputeHash(canonicalURL))
+	if err := os.MkdirAll(filepath.Dir(cacheRepoPath), 0755); err != nil {
+		t.Fatalf("failed to create workspace dir: %v", err)
+	}
+	runGit(t, repoPath, "clone", "-b", "main", remoteOrigin, cacheRepoPath)
+
+	if err := runSync(syncCmd, []string{}); err != nil {
+		t.Fatalf("first sync failed: %v", err)
+	}
+	if err := runSync(syncCmd, []string{}); err != nil {
+		t.Fatalf("second sync failed: %v", err)
+	}
+
+	if workspace.ComputeHash(trickyURL) != workspace.ComputeHash(canonicalURL) {
+		t.Fatalf("expected tricky and canonical URL to resolve to same cache hash")
+	}
+
+	manager := repo.NewManagerWithPath(repoPath)
+	unreferenced, err := findUnreferencedCaches(manager, workspaceManager)
+	if err != nil {
+		t.Fatalf("findUnreferencedCaches failed: %v", err)
+	}
+	if len(unreferenced) != 0 {
+		t.Fatalf("expected no unreferenced caches, got %#v", unreferenced)
+	}
+
+	metadata, err := sourcemetadata.Load(repoPath)
+	if err != nil {
+		t.Fatalf("failed to load source metadata: %v", err)
+	}
+	state := metadata.Get("remote-source")
+	if state == nil {
+		t.Fatalf("expected source metadata for remote-source")
+	}
+	if state.LastSynced.IsZero() {
+		t.Fatalf("expected non-zero last_synced for remote-source")
+	}
+
+	manifest, err := repomanifest.Load(repoPath)
+	if err != nil {
+		t.Fatalf("failed to load manifest: %v", err)
+	}
+	src, ok := manifest.GetSource("remote-source")
+	if !ok {
+		t.Fatalf("expected remote-source in manifest")
+	}
+	if src.ID == "" {
+		t.Fatalf("expected source ID to be set for remote-source")
+	}
+}
+
 func TestPrintSyncOutputTable_CompactIncludesRemovedCounts(t *testing.T) {
 	so := &syncOutput{
 		Sources: []sourceSyncResult{

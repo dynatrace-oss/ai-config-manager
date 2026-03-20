@@ -6,8 +6,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/giturl"
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/metadata"
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/repo"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/repomanifest"
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/resource"
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/workspace"
 )
@@ -359,12 +361,13 @@ func TestNormalizeURL(t *testing.T) {
 		expected string
 	}{
 		{"https://github.com/test/repo", "https://github.com/test/repo"},
+		{"HTTPS://GitHub.com/Test/Repo", "https://github.com/test/repo"},
 		{"https://github.com/test/repo.git", "https://github.com/test/repo"},
 		{"https://github.com/test/repo/", "https://github.com/test/repo"},
 		{"https://github.com/test/repo.git/", "https://github.com/test/repo"},
-		{"https://GitHub.com/Test/Repo", "https://github.com/test/repo"},
+		{"https://github.com/test/repo/.git", "https://github.com/test/repo"},
+		{"https://github.com/test/repo///", "https://github.com/test/repo"},
 		{"  https://github.com/test/repo  ", "https://github.com/test/repo"},
-		{"https://github.com/test/repo/.git", "https://github.com/test/repo"}, // .git stripped
 	}
 
 	for _, tt := range tests {
@@ -374,6 +377,50 @@ func TestNormalizeURL(t *testing.T) {
 				t.Errorf("normalizeURL(%q) = %q, expected %q", tt.input, result, tt.expected)
 			}
 		})
+	}
+}
+
+func TestNormalizeURL_ConsistencyWithCanonicalHelper(t *testing.T) {
+	inputs := []string{
+		"https://github.com/test/repo",
+		"HTTPS://GitHub.com/Test/Repo",
+		"https://github.com/test/repo/",
+		"https://github.com/test/repo.git",
+		"https://github.com/test/repo.git/",
+		"https://github.com/test/repo/.git",
+		"https://github.com/test/repo///",
+		"  https://github.com/test/repo  ",
+	}
+
+	for _, input := range inputs {
+		t.Run(input, func(t *testing.T) {
+			got := normalizeURL(input)
+			want := giturl.NormalizeURL(input)
+			if got != want {
+				t.Fatalf("normalizeURL(%q) = %q, want canonical %q", input, got, want)
+			}
+		})
+	}
+}
+
+func TestURLNormalization_ConsistencyAcrossWorkspacePruneAndSourceID(t *testing.T) {
+	input := "  HTTPS://github.com/Test/Repo.git/  "
+
+	normalized := normalizeURL(input)
+	workspaceHash := workspace.ComputeHash(input)
+	canonicalHash := workspace.ComputeHash(normalized)
+	if workspaceHash != canonicalHash {
+		t.Fatalf("workspace hash mismatch: %s != %s", workspaceHash, canonicalHash)
+	}
+
+	canonicalSourceID := repomanifest.GenerateSourceID(&repomanifest.Source{URL: normalized})
+	inputSourceID := repomanifest.GenerateSourceID(&repomanifest.Source{URL: input})
+	if canonicalSourceID != inputSourceID {
+		t.Fatalf("source ID mismatch for equivalent URLs: %s != %s", canonicalSourceID, inputSourceID)
+	}
+
+	if normalized != giturl.NormalizeURL(input) {
+		t.Fatalf("prune normalization mismatch with canonical helper")
 	}
 }
 

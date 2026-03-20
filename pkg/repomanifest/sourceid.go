@@ -4,7 +4,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"path/filepath"
-	"strings"
+
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/giturl"
 )
 
 // GenerateSourceID produces a deterministic hash-based source ID from a source's
@@ -41,11 +42,7 @@ func GenerateSourceID(source *Source) string {
 // normalizeURL normalizes a URL for consistent hashing by lowercasing,
 // stripping trailing slashes, and removing .git suffixes.
 func normalizeURL(url string) string {
-	url = strings.ToLower(url)
-	url = strings.TrimSuffix(url, "/")
-	url = strings.TrimSuffix(url, ".git")
-
-	return url
+	return giturl.NormalizeURL(url)
 }
 
 // normalizePath normalizes a filesystem path by resolving it to an absolute path.

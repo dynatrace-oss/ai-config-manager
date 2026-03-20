@@ -38,6 +38,30 @@ func TestGenerateSourceID_URLNormalization(t *testing.T) {
 			wantSame: true,
 		},
 		{
+			name:     "dot git slash normalizes to same ID",
+			sourceA:  &Source{Name: "a", URL: "https://github.com/user/repo.git/"},
+			sourceB:  &Source{Name: "b", URL: "https://github.com/user/repo"},
+			wantSame: true,
+		},
+		{
+			name:     "slash dot git normalizes to same ID",
+			sourceA:  &Source{Name: "a", URL: "https://github.com/user/repo/.git"},
+			sourceB:  &Source{Name: "b", URL: "https://github.com/user/repo"},
+			wantSame: true,
+		},
+		{
+			name:     "multiple trailing slashes normalize to same ID",
+			sourceA:  &Source{Name: "a", URL: "https://github.com/user/repo///"},
+			sourceB:  &Source{Name: "b", URL: "https://github.com/user/repo"},
+			wantSame: true,
+		},
+		{
+			name:     "surrounding whitespace normalizes to same ID",
+			sourceA:  &Source{Name: "a", URL: "  https://github.com/user/repo  "},
+			sourceB:  &Source{Name: "b", URL: "https://github.com/user/repo"},
+			wantSame: true,
+		},
+		{
 			name:     "different URLs produce different IDs",
 			sourceA:  &Source{Name: "a", URL: "https://github.com/user/repo-a"},
 			sourceB:  &Source{Name: "b", URL: "https://github.com/user/repo-b"},
@@ -70,6 +94,15 @@ func TestGenerateSourceID_URLNormalization(t *testing.T) {
 				t.Errorf("expected different IDs, got same: %q", idA)
 			}
 		})
+	}
+}
+
+func TestGenerateSourceID_CompatibilityWithLegacyUntrimmedURLSourceID(t *testing.T) {
+	legacyPersisted := GenerateSourceID(&Source{Name: "legacy", URL: "https://github.com/user/repo.git/"})
+	currentCanonical := GenerateSourceID(&Source{Name: "current", URL: "https://github.com/user/repo"})
+
+	if legacyPersisted != currentCanonical {
+		t.Fatalf("expected legacy persisted URL source identity to remain stable, got %q vs %q", legacyPersisted, currentCanonical)
 	}
 }
 

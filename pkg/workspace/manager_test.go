@@ -43,6 +43,21 @@ func TestNormalizeURL(t *testing.T) {
 			expected: "https://github.com/anthropics/skills",
 		},
 		{
+			name:     ".git slash removed",
+			input:    "https://github.com/anthropics/skills.git/",
+			expected: "https://github.com/anthropics/skills",
+		},
+		{
+			name:     "slash .git removed",
+			input:    "https://github.com/anthropics/skills/.git",
+			expected: "https://github.com/anthropics/skills",
+		},
+		{
+			name:     "multiple trailing slashes removed",
+			input:    "https://github.com/anthropics/skills///",
+			expected: "https://github.com/anthropics/skills",
+		},
+		{
 			name:     "multiple transformations",
 			input:    "  https://GitHub.com/Anthropics/Skills.git/  ",
 			expected: "https://github.com/anthropics/skills",
@@ -81,6 +96,9 @@ func TestComputeHash(t *testing.T) {
 		"https://GitHub.com/Anthropics/Skills",
 		"https://github.com/anthropics/skills/",
 		"https://github.com/anthropics/skills.git",
+		"https://github.com/anthropics/skills.git/",
+		"https://github.com/anthropics/skills/.git",
+		"https://github.com/anthropics/skills///",
 		"  https://github.com/anthropics/skills  ",
 	}
 
@@ -706,6 +724,138 @@ func TestPrune_RemovesUnlockedCacheWhileLockedCacheContended(t *testing.T) {
 	}
 	if _, err := os.Stat(lockedCache); err != nil {
 		t.Fatalf("expected locked cache to remain, stat err=%v", err)
+	}
+}
+
+func TestGetOrClone_CompatibilityUsesLegacyCacheHashWhenPresent(t *testing.T) {
+	remoteURL := createLocalGitRemoteForWorkspaceTest(t)
+	trickyURL := remoteURL + ".git/"
+
+	tmpDir := t.TempDir()
+	mgr, err := NewManager(tmpDir)
+	if err != nil {
+		t.Fatalf("NewManager failed: %v", err)
+	}
+	if err := mgr.Init(); err != nil {
+		t.Fatalf("Init failed: %v", err)
+	}
+
+	legacyPath := filepath.Join(tmpDir, ".workspace", legacyComputeHash(trickyURL))
+	if err := os.MkdirAll(filepath.Dir(legacyPath), 0755); err != nil {
+		t.Fatalf("failed to create workspace parent: %v", err)
+	}
+
+	cmd := exec.Command("git", "clone", "-b", "main", remoteURL, legacyPath)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("failed to seed legacy cache: %v\n%s", err, string(output))
+	}
+
+	cachePath, err := mgr.GetOrClone(trickyURL, "main")
+	if err != nil {
+		t.Fatalf("GetOrClone failed: %v", err)
+	}
+
+	if cachePath != legacyPath {
+		t.Fatalf("expected legacy cache path %q, got %q", legacyPath, cachePath)
+	}
+
+	modernPath := filepath.Join(tmpDir, ".workspace", computeHash(trickyURL))
+	if legacyPath == modernPath {
+		t.Fatalf("test requires legacy and modern cache paths to differ")
+	}
+	if _, err := os.Stat(modernPath); err == nil {
+		t.Fatalf("expected modern cache path to not be created when legacy cache exists")
+	}
+}
+
+func TestRemove_CompatibilityRemovesLegacyCacheAndMetadata(t *testing.T) {
+	tmpDir := t.TempDir()
+	mgr, err := NewManager(tmpDir)
+	if err != nil {
+		t.Fatalf("NewManager failed: %v", err)
+	}
+	if err := mgr.Init(); err != nil {
+		t.Fatalf("Init failed: %v", err)
+	}
+
+	trickyURL := "https://github.com/test/legacy.git/"
+	legacyHash := legacyComputeHash(trickyURL)
+	legacyPath := filepath.Join(tmpDir, ".workspace", legacyHash)
+	if err := os.MkdirAll(filepath.Join(legacyPath, ".git"), 0755); err != nil {
+		t.Fatalf("failed to create legacy cache dir: %v", err)
+	}
+
+	metadata := &CacheMetadata{
+		Version: "1.0",
+		Caches: map[string]CacheEntry{
+			legacyHash: {
+				URL: trickyURL,
+				Ref: "main",
+			},
+		},
+	}
+	if err := mgr.saveMetadata(metadata); err != nil {
+		t.Fatalf("saveMetadata failed: %v", err)
+	}
+
+	if err := mgr.Remove(trickyURL); err != nil {
+		t.Fatalf("Remove failed: %v", err)
+	}
+
+	if _, err := os.Stat(legacyPath); !os.IsNotExist(err) {
+		t.Fatalf("expected legacy cache path to be removed, stat err=%v", err)
+	}
+
+	loaded, err := mgr.loadMetadata()
+	if err != nil {
+		t.Fatalf("loadMetadata failed: %v", err)
+	}
+	if _, exists := loaded.Caches[legacyHash]; exists {
+		t.Fatalf("expected legacy metadata entry to be removed")
+	}
+}
+
+func TestLoadMetadata_CompatibilityPreservesLegacyNormalizedURL(t *testing.T) {
+	tmpDir := t.TempDir()
+	mgr, err := NewManager(tmpDir)
+	if err != nil {
+		t.Fatalf("NewManager failed: %v", err)
+	}
+	if err := mgr.Init(); err != nil {
+		t.Fatalf("Init failed: %v", err)
+	}
+
+	legacyURL := "https://github.com/test/legacy.git"
+	legacyHash := computeHash(legacyURL)
+
+	legacyMetadata := `{
+  "version": "1.0",
+  "caches": {
+    "` + legacyHash + `": {
+      "url": "` + legacyURL + `",
+      "last_accessed": "2026-01-01T00:00:00Z",
+      "last_updated": "2026-01-01T00:00:00Z",
+      "ref": "main"
+    }
+  }
+}`
+
+	metadataPath := filepath.Join(tmpDir, ".workspace", ".cache-metadata.json")
+	if err := os.WriteFile(metadataPath, []byte(legacyMetadata), 0644); err != nil {
+		t.Fatalf("failed to write legacy metadata: %v", err)
+	}
+
+	metadata, err := mgr.loadMetadata()
+	if err != nil {
+		t.Fatalf("loadMetadata failed: %v", err)
+	}
+
+	entry, ok := metadata.Caches[legacyHash]
+	if !ok {
+		t.Fatalf("expected legacy cache entry to remain addressable by legacy hash")
+	}
+	if entry.URL != legacyURL {
+		t.Fatalf("expected legacy URL to remain unchanged, got %q", entry.URL)
 	}
 }
 

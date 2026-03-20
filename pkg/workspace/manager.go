@@ -30,10 +30,11 @@ normalized Git URL. This ensures:
 - Security (no special characters or path traversal in directory names)
 
 Normalization rules:
-1. Convert to lowercase
-2. Strip trailing slashes
-3. Strip .git suffix if present
-4. Trim whitespace
+1. Trim whitespace
+2. Convert to lowercase
+3. Repeatedly strip trailing slashes
+4. Repeatedly strip trailing .git suffixes
+5. Stop when stable
 
 Examples:
   https://github.com/anthropics/skills       → sha256(https://github.com/anthropics/skills)
@@ -146,6 +147,7 @@ import (
 	"time"
 
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/fileutil"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/giturl"
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/repolock"
 )
 
@@ -376,9 +378,8 @@ func (m *Manager) GetOrClone(url string, ref string) (string, error) {
 	// If ref is empty, use empty string for git clone (which defaults to HEAD)
 	// This will be handled properly in cloneRepo and checkoutRef
 
-	// Get cache path
-	cachePath := m.getCachePath(url)
-	cacheHash := computeHash(url)
+	// Resolve cache path/hash with legacy compatibility fallback
+	cachePath, cacheHash := m.resolveCacheLocation(url)
 
 	cacheLock, err := m.acquireCacheLock(context.Background(), cacheHash)
 	if err != nil {
@@ -423,7 +424,7 @@ func (m *Manager) GetOrClone(url string, ref string) (string, error) {
 						return "", fmt.Errorf("failed to checkout ref after fetch: %w", err)
 					}
 					// Success - update metadata and return
-					if err := m.updateMetadataEntry(url, ref, "access"); err != nil {
+					if err := m.updateMetadataEntryForHash(url, ref, "access", cacheHash); err != nil {
 						// Log warning but don't fail - metadata is optional
 						fmt.Fprintf(os.Stderr, "warning: failed to update metadata: %v\n", err)
 					}
@@ -431,7 +432,7 @@ func (m *Manager) GetOrClone(url string, ref string) (string, error) {
 				}
 			} else {
 				// Checkout succeeded - update metadata and return
-				if err := m.updateMetadataEntry(url, ref, "access"); err != nil {
+				if err := m.updateMetadataEntryForHash(url, ref, "access", cacheHash); err != nil {
 					// Log warning but don't fail - metadata is optional
 					fmt.Fprintf(os.Stderr, "warning: failed to update metadata: %v\n", err)
 				}
@@ -439,7 +440,7 @@ func (m *Manager) GetOrClone(url string, ref string) (string, error) {
 			}
 		} else {
 			// No ref specified, use whatever is currently checked out
-			if err := m.updateMetadataEntry(url, ref, "access"); err != nil {
+			if err := m.updateMetadataEntryForHash(url, ref, "access", cacheHash); err != nil {
 				// Log warning but don't fail - metadata is optional
 				fmt.Fprintf(os.Stderr, "warning: failed to update metadata: %v\n", err)
 			}
@@ -458,7 +459,7 @@ func (m *Manager) GetOrClone(url string, ref string) (string, error) {
 	}
 
 	// Update metadata
-	if err := m.updateMetadataEntry(url, ref, "clone"); err != nil {
+	if err := m.updateMetadataEntryForHash(url, ref, "clone", cacheHash); err != nil {
 		// Log warning but don't fail - metadata is optional
 		fmt.Fprintf(os.Stderr, "warning: failed to update metadata: %v\n", err)
 	}
@@ -498,9 +499,8 @@ func (m *Manager) Update(url string, ref string) error {
 		return fmt.Errorf("url cannot be empty")
 	}
 
-	// Get cache path
-	cachePath := m.getCachePath(url)
-	cacheHash := computeHash(url)
+	// Resolve cache path/hash with legacy compatibility fallback
+	cachePath, cacheHash := m.resolveCacheLocation(url)
 
 	cacheLock, err := m.acquireCacheLock(context.Background(), cacheHash)
 	if err != nil {
@@ -573,7 +573,7 @@ func (m *Manager) Update(url string, ref string) error {
 	}
 
 	// Update metadata
-	if err := m.updateMetadataEntry(url, ref, "update"); err != nil {
+	if err := m.updateMetadataEntryForHash(url, ref, "update", cacheHash); err != nil {
 		// Log warning but don't fail - metadata is optional
 		fmt.Fprintf(os.Stderr, "warning: failed to update metadata: %v\n", err)
 	}
@@ -731,9 +731,7 @@ func (m *Manager) Remove(url string) error {
 		return fmt.Errorf("invalid URL: %s", url)
 	}
 
-	// Get cache path
-	cachePath := m.getCachePath(normalized)
-	cacheHash := computeHash(normalized)
+	cachePath, cacheHash := m.resolveCacheLocation(normalized)
 
 	cacheLock, err := m.acquireCacheLock(context.Background(), cacheHash)
 	if err != nil {
@@ -770,6 +768,25 @@ func (m *Manager) Remove(url string) error {
 
 func (m *Manager) acquireCacheLock(ctx context.Context, cacheHash string) (*repolock.Lock, error) {
 	return repolock.Acquire(ctx, m.locks.CacheLockPath(cacheHash), m.lockAcquireTimeout)
+}
+
+func (m *Manager) resolveCacheLocation(url string) (cachePath string, cacheHash string) {
+	primaryHash := computeHash(url)
+	primaryPath := filepath.Join(m.workspaceDir, primaryHash)
+
+	if m.isValidCache(primaryPath) {
+		return primaryPath, primaryHash
+	}
+
+	legacyHash := legacyComputeHash(url)
+	if legacyHash != primaryHash {
+		legacyPath := filepath.Join(m.workspaceDir, legacyHash)
+		if m.isValidCache(legacyPath) {
+			return legacyPath, legacyHash
+		}
+	}
+
+	return primaryPath, primaryHash
 }
 
 func (m *Manager) acquireWorkspaceMetadataLock(ctx context.Context) (*repolock.Lock, error) {
@@ -830,30 +847,15 @@ func (m *Manager) getRemoteURL(cachePath string) (string, error) {
 	return output, nil
 }
 
-// normalizeURL normalizes a Git URL for consistent hashing.
-//
-// Normalization rules:
-//   - Convert to lowercase
-//   - Trim whitespace
-//   - Strip trailing slashes
-//   - Strip .git suffix
-//
-// Example:
-//
-//	https://GitHub.com/Anthropics/Skills.git/  → https://github.com/anthropics/skills
 func normalizeURL(url string) string {
-	// Trim whitespace
+	return giturl.NormalizeURL(url)
+}
+
+func legacyNormalizeURL(url string) string {
 	normalized := strings.TrimSpace(url)
-
-	// Convert to lowercase
 	normalized = strings.ToLower(normalized)
-
-	// Strip trailing slashes
 	normalized = strings.TrimSuffix(normalized, "/")
-
-	// Strip .git suffix
 	normalized = strings.TrimSuffix(normalized, ".git")
-
 	return normalized
 }
 
@@ -861,6 +863,12 @@ func normalizeURL(url string) string {
 // Returns the hash as a lowercase hexadecimal string.
 func computeHash(url string) string {
 	normalized := normalizeURL(url)
+	hash := sha256.Sum256([]byte(normalized))
+	return hex.EncodeToString(hash[:])
+}
+
+func legacyComputeHash(url string) string {
+	normalized := legacyNormalizeURL(url)
 	hash := sha256.Sum256([]byte(normalized))
 	return hex.EncodeToString(hash[:])
 }
@@ -942,6 +950,10 @@ func (m *Manager) saveMetadata(metadata *CacheMetadata) error {
 
 // updateMetadataEntry updates the metadata for a specific cache entry.
 func (m *Manager) updateMetadataEntry(url string, ref string, updateType string) error {
+	return m.updateMetadataEntryForHash(url, ref, updateType, computeHash(url))
+}
+
+func (m *Manager) updateMetadataEntryForHash(url string, ref string, updateType string, hash string) error {
 	metadataLock, err := m.acquireWorkspaceMetadataLock(context.Background())
 	if err != nil {
 		return fmt.Errorf("failed to acquire workspace metadata lock at %s: %w", m.locks.WorkspaceMetadataLockPath(), err)
@@ -959,7 +971,6 @@ func (m *Manager) updateMetadataEntry(url string, ref string, updateType string)
 		return err
 	}
 
-	hash := computeHash(url)
 	normalized := normalizeURL(url)
 
 	entry, exists := metadata.Caches[hash]
@@ -997,6 +1008,7 @@ func (m *Manager) removeMetadataEntry(url string) error {
 	}
 
 	delete(metadata.Caches, computeHash(url))
+	delete(metadata.Caches, legacyComputeHash(url))
 
 	return m.saveMetadata(metadata)
 }
