@@ -15,7 +15,7 @@ import (
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/sourcemetadata"
 )
 
-func setupRemoveTestRepo(t *testing.T, sources ...*repomanifest.Source) (string, *repo.Manager, *repomanifest.Manifest) {
+func setupRemoveTestRepo(t *testing.T, sources ...*repomanifest.Source) (string, *repo.Manager) {
 	t.Helper()
 
 	tempDir := t.TempDir()
@@ -41,7 +41,7 @@ func setupRemoveTestRepo(t *testing.T, sources ...*repomanifest.Source) (string,
 		}
 	}
 
-	return tempDir, mgr, manifest
+	return tempDir, mgr
 }
 
 func TestRepoRemove_ByName(t *testing.T) {
@@ -50,7 +50,7 @@ func TestRepoRemove_ByName(t *testing.T) {
 		Path: "/home/user/resources",
 	}
 
-	tempDir, mgr, _ := setupRemoveTestRepo(t, source)
+	tempDir, mgr := setupRemoveTestRepo(t, source)
 
 	// Add a test resource with metadata pointing to this source
 	commandPath := filepath.Join(tempDir, "commands", "test-command.md")
@@ -118,7 +118,7 @@ func TestRepoRemove_ByPath(t *testing.T) {
 		Path: sourcePath,
 	}
 
-	tempDir, mgr, _ := setupRemoveTestRepo(t, source)
+	tempDir, mgr := setupRemoveTestRepo(t, source)
 
 	// Remove the source by path
 	if err := performRemove(mgr, sourcePath, false, false); err != nil {
@@ -139,7 +139,7 @@ func TestRepoRemove_ByURL(t *testing.T) {
 		URL:  sourceURL,
 	}
 
-	tempDir, mgr, _ := setupRemoveTestRepo(t, source)
+	tempDir, mgr := setupRemoveTestRepo(t, source)
 
 	// Remove the source by URL
 	if err := performRemove(mgr, sourceURL, false, false); err != nil {
@@ -159,7 +159,7 @@ func TestRepoRemove_DryRun(t *testing.T) {
 		Path: "/home/user/resources",
 	}
 
-	tempDir, mgr, _ := setupRemoveTestRepo(t, source)
+	tempDir, mgr := setupRemoveTestRepo(t, source)
 
 	// Add a test resource
 	commandPath := filepath.Join(tempDir, "commands", "test-command.md")
@@ -209,7 +209,7 @@ func TestRepoRemove_KeepResources(t *testing.T) {
 		Path: "/home/user/resources",
 	}
 
-	tempDir, mgr, _ := setupRemoveTestRepo(t, source)
+	tempDir, mgr := setupRemoveTestRepo(t, source)
 
 	// Add a test resource
 	commandPath := filepath.Join(tempDir, "commands", "test-command.md")
@@ -254,7 +254,7 @@ description: Test command
 }
 
 func TestRepoRemove_NotFound(t *testing.T) {
-	_, mgr, _ := setupRemoveTestRepo(t)
+	_, mgr := setupRemoveTestRepo(t)
 
 	// Try to remove non-existent source
 	err := performRemove(mgr, "nonexistent-source", false, false)
@@ -274,7 +274,7 @@ func TestRepoRemove_MultipleResources(t *testing.T) {
 		Path: "/home/user/resources",
 	}
 
-	tempDir, mgr, _ := setupRemoveTestRepo(t, source)
+	tempDir, mgr := setupRemoveTestRepo(t, source)
 
 	// Add multiple test resources
 	commandPath := filepath.Join(tempDir, "commands", "test-command.md")
@@ -356,7 +356,7 @@ func TestRepoRemove_GitCommit(t *testing.T) {
 		Path: "/home/user/resources",
 	}
 
-	tempDir, mgr, _ := setupRemoveTestRepo(t, source)
+	tempDir, mgr := setupRemoveTestRepo(t, source)
 
 	// Commit the initial state
 	if err := mgr.CommitChangesForPaths("test: add source", []string{repomanifest.ManifestFileName}); err != nil {
@@ -443,7 +443,7 @@ func TestRepoRemove_OnlyOrphansFromSource(t *testing.T) {
 		Path: "/home/user/resources2",
 	}
 
-	tempDir, mgr, _ := setupRemoveTestRepo(t, source1, source2)
+	tempDir, mgr := setupRemoveTestRepo(t, source1, source2)
 
 	// Add resources from both sources
 	command1Path := filepath.Join(tempDir, "commands", "command1.md")
@@ -522,7 +522,7 @@ func TestRepoRemove_CleansUpSourceMetadata(t *testing.T) {
 		Path: "/home/user/resources",
 	}
 
-	tempDir, mgr, _ := setupRemoveTestRepo(t, source)
+	tempDir, mgr := setupRemoveTestRepo(t, source)
 
 	// Create source metadata entry
 	srcMeta, err := sourcemetadata.Load(tempDir)
@@ -562,7 +562,7 @@ func TestRepoRemove_CleansUpSourceMetadata_KeepResources(t *testing.T) {
 		Path: "/home/user/resources",
 	}
 
-	tempDir, mgr, _ := setupRemoveTestRepo(t, source)
+	tempDir, mgr := setupRemoveTestRepo(t, source)
 
 	// Add a test resource so we can verify it's kept
 	commandPath := filepath.Join(tempDir, "commands", "test-command.md")
@@ -629,7 +629,7 @@ func TestRepoRemove_RenamedSourceMatchesByID(t *testing.T) {
 	}
 
 	// Step 1: Add source with original name
-	tempDir, mgr, _ := setupRemoveTestRepo(t, source)
+	tempDir, mgr := setupRemoveTestRepo(t, source)
 
 	// AddSource auto-generates ID; capture it
 	sourceID := source.ID
@@ -724,7 +724,7 @@ func TestRepoRemove_LegacyResourceWithoutSourceID(t *testing.T) {
 		Path: "/home/user/legacy",
 	}
 
-	tempDir, mgr, _ := setupRemoveTestRepo(t, source)
+	tempDir, mgr := setupRemoveTestRepo(t, source)
 
 	// Add a resource with metadata that has source_name but NO source_id (legacy)
 	commandPath := filepath.Join(tempDir, "commands", "legacy-cmd.md")
@@ -771,7 +771,7 @@ func TestRepoRemove_WarnsAboutProjectSymlinks(t *testing.T) {
 		ID:   "src-warn",
 	}
 
-	tempDir, mgr, _ := setupRemoveTestRepo(t, source)
+	tempDir, mgr := setupRemoveTestRepo(t, source)
 
 	// Add a test resource with metadata pointing to this source
 	commandPath := filepath.Join(tempDir, "commands", "warn-cmd.md")
@@ -832,7 +832,7 @@ func TestRepoRemove_WarnsAboutProjectSymlinks_DryRun(t *testing.T) {
 		ID:   "src-dryrun-warn",
 	}
 
-	tempDir, mgr, _ := setupRemoveTestRepo(t, source)
+	tempDir, mgr := setupRemoveTestRepo(t, source)
 
 	// Add a test resource
 	commandPath := filepath.Join(tempDir, "commands", "dryrun-cmd.md")
@@ -892,7 +892,7 @@ func TestRepoRemove_NoWarningWhenKeepResources(t *testing.T) {
 		ID:   "src-keep",
 	}
 
-	tempDir, mgr, _ := setupRemoveTestRepo(t, source)
+	tempDir, mgr := setupRemoveTestRepo(t, source)
 
 	// Add a test resource
 	commandPath := filepath.Join(tempDir, "commands", "keep-cmd.md")

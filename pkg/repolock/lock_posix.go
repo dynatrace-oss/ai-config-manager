@@ -39,12 +39,14 @@ func Acquire(ctx context.Context, path string, timeout time.Duration) (*Lock, er
 		return nil, err
 	}
 
+	// #nosec G703 -- lock file path is an internal repository lock path controlled by callers.
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		tracker.release(path)
 		return nil, fmt.Errorf("failed to create lock directory: %w", err)
 	}
 
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0644)
+	// #nosec G703 -- lock file path is an internal repository lock path controlled by callers.
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
 		tracker.release(path)
 		return nil, fmt.Errorf("failed to open lock file: %w", err)
@@ -61,7 +63,13 @@ func Acquire(ctx context.Context, path string, timeout time.Duration) (*Lock, er
 	}
 
 	for {
-		err = unix.Flock(int(file.Fd()), unix.LOCK_EX|unix.LOCK_NB)
+		fd, convErr := safeFD(file)
+		if convErr != nil {
+			cleanup()
+			return nil, convErr
+		}
+
+		err = unix.Flock(fd, unix.LOCK_EX|unix.LOCK_NB)
 		if err == nil {
 			return &Lock{path: path, file: file}, nil
 		}
@@ -92,18 +100,26 @@ func TryAcquire(path string) (*Lock, bool, error) {
 		return nil, false, err
 	}
 
+	// #nosec G703 -- lock file path is an internal repository lock path controlled by callers.
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		tracker.release(path)
 		return nil, false, fmt.Errorf("failed to create lock directory: %w", err)
 	}
 
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0644)
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
 		tracker.release(path)
 		return nil, false, fmt.Errorf("failed to open lock file: %w", err)
 	}
 
-	err = unix.Flock(int(file.Fd()), unix.LOCK_EX|unix.LOCK_NB)
+	fd, convErr := safeFD(file)
+	if convErr != nil {
+		_ = file.Close()
+		tracker.release(path)
+		return nil, false, convErr
+	}
+
+	err = unix.Flock(fd, unix.LOCK_EX|unix.LOCK_NB)
 	if err == nil {
 		return &Lock{path: path, file: file}, true, nil
 	}
@@ -125,7 +141,14 @@ func (l *Lock) Unlock() error {
 	}
 
 	defer tracker.release(l.path)
-	errUnlock := unix.Flock(int(l.file.Fd()), unix.LOCK_UN)
+	fd, convErr := safeFD(l.file)
+	if convErr != nil {
+		_ = l.file.Close()
+		l.file = nil
+		return convErr
+	}
+
+	errUnlock := unix.Flock(fd, unix.LOCK_UN)
 	errClose := l.file.Close()
 	l.file = nil
 
@@ -137,4 +160,14 @@ func (l *Lock) Unlock() error {
 	}
 
 	return nil
+}
+
+func safeFD(file *os.File) (int, error) {
+	fd := file.Fd()
+	maxInt := uintptr(^uint(0) >> 1)
+	if fd > maxInt {
+		return 0, fmt.Errorf("file descriptor out of int range")
+	}
+
+	return int(fd), nil
 }

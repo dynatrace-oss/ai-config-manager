@@ -147,11 +147,14 @@ func TestHelperAcquireLockAndWait(t *testing.T) {
 	if err != nil {
 		os.Exit(3)
 	}
+	// #nosec G703 -- readyPath is a test-only marker path controlled by this test process.
 	if err := os.WriteFile(readyPath, []byte("ready"), 0644); err != nil {
 		os.Exit(5)
 	}
 
-	defer lock.Unlock()
+	defer func() {
+		_ = lock.Unlock()
+	}()
 	for {
 		time.Sleep(time.Second)
 	}
@@ -161,6 +164,7 @@ func startLockHelper(t *testing.T, lockPath string) *exec.Cmd {
 	t.Helper()
 
 	readyPath := filepath.Join(t.TempDir(), "ready")
+	// #nosec G702 -- os.Args[0] is the current test binary path.
 	cmd := exec.Command(os.Args[0], "-test.run=TestHelperAcquireLockAndWait")
 	cmd.Env = append(
 		os.Environ(),

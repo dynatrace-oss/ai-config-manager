@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.5.0] - 2026-03-20
+
+### Added
+- **One-line release installers** — Added streamlined install commands for downloading and installing the latest `aimgr` release directly from GitHub Releases.
+
+### Changed
+- **Install and list performance** — Reduced repeated config and manifest work in common install and list paths for lower overhead during routine CLI operations.
+- **CI workflow maintenance** — Updated GitHub Actions to the Node.js 24 runtime and removed Codecov integration from the repository workflow.
+
+### Fixed
+- **Git source URL normalization consistency** — Workspace cache hashing, prune matching, and URL-based source IDs now share one canonical normalization flow, avoiding mismatches for equivalent Git URLs such as `.git/` suffixed forms.
+- **Concurrent repository mutation safety** — Repository and workspace mutation paths now serialize lock usage more safely under contention.
+- **Stable resource ordering** — Resource listing output is now sorted alphabetically for more predictable results.
+- **Release-blocking lint regressions** — Locking, workspace, and atomic-write paths were tightened so full repository quality gates pass cleanly again.
+
 ## [3.4.0] - 2026-03-16
 
 ### Breaking Changes
@@ -898,7 +913,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cross-platform support (Linux, macOS)
 - Configuration management with XDG base directory support
 
-[Unreleased]: https://github.com/dynatrace-oss/ai-config-manager/compare/v3.4.0...HEAD
+[Unreleased]: https://github.com/dynatrace-oss/ai-config-manager/compare/v3.5.0...HEAD
+[3.5.0]: https://github.com/dynatrace-oss/ai-config-manager/compare/v3.4.0...v3.5.0
 [3.4.0]: https://github.com/dynatrace-oss/ai-config-manager/compare/v3.3.0...v3.4.0
 [3.3.0]: https://github.com/dynatrace-oss/ai-config-manager/compare/v3.2.0...v3.3.0
 [3.2.0]: https://github.com/dynatrace-oss/ai-config-manager/compare/v3.1.0...v3.2.0

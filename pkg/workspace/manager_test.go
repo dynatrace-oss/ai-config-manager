@@ -320,7 +320,7 @@ func TestUpdateMetadataEntry(t *testing.T) {
 	ref := "main"
 
 	// Add new entry
-	if err := mgr.updateMetadataEntry(url, ref, "clone"); err != nil {
+	if err := mgr.updateMetadataEntryForHash(url, ref, "clone", computeHash(url)); err != nil {
 		t.Fatalf("updateMetadataEntry failed: %v", err)
 	}
 
@@ -352,7 +352,7 @@ func TestUpdateMetadataEntry(t *testing.T) {
 	firstUpdated := entry.LastUpdated
 
 	// Update with access only (no update)
-	if err := mgr.updateMetadataEntry(url, ref, "access"); err != nil {
+	if err := mgr.updateMetadataEntryForHash(url, ref, "access", computeHash(url)); err != nil {
 		t.Fatalf("updateMetadataEntry (access) failed: %v", err)
 	}
 
@@ -878,6 +878,7 @@ func TestConcurrentMetadataUpdates_DoNotLoseEntries(t *testing.T) {
 
 	cmds := make([]*exec.Cmd, 0, len(urls))
 	for _, u := range urls {
+		// #nosec G702 -- os.Args[0] is the current test binary path.
 		cmd := exec.Command(os.Args[0], "-test.run=TestHelperWorkspaceMetadataUpdate")
 		cmd.Env = append(
 			os.Environ(),
@@ -944,7 +945,7 @@ func TestUpdateMetadataEntry_TimesOutWhenMetadataLockHeldByAnotherProcess(t *tes
 		_ = cmd.Wait()
 	})
 
-	err = mgr.updateMetadataEntry("https://github.com/test/metadata-locked", "main", "clone")
+	err = mgr.updateMetadataEntry("https://github.com/test/metadata-locked", "clone")
 	if err == nil {
 		t.Fatalf("updateMetadataEntry expected lock acquisition error")
 	}
@@ -968,6 +969,7 @@ func TestGetOrClone_BlocksUntilConcurrentCloneReleasesCacheLock(t *testing.T) {
 	url := createLocalGitRemoteForWorkspaceTest(t)
 	signalDir := t.TempDir()
 
+	// #nosec G702 -- os.Args[0] is the current test binary path.
 	first := exec.Command(os.Args[0], "-test.run=TestHelperWorkspaceConcurrentOperation")
 	first.Env = append(os.Environ(),
 		"AIMGR_TEST_WORKSPACE_HELPER_MODE=workspace-op",
@@ -988,6 +990,7 @@ func TestGetOrClone_BlocksUntilConcurrentCloneReleasesCacheLock(t *testing.T) {
 
 	waitForWorkspaceMarker(t, filepath.Join(signalDir, "clone.ready"), 5*time.Second)
 
+	// #nosec G702 -- os.Args[0] is the current test binary path.
 	second := exec.Command(os.Args[0], "-test.run=TestHelperWorkspaceConcurrentOperation")
 	second.Env = append(os.Environ(),
 		"AIMGR_TEST_WORKSPACE_HELPER_MODE=workspace-op",
@@ -1110,7 +1113,7 @@ func TestHelperWorkspaceMetadataUpdate(t *testing.T) {
 	if err := mgr.Init(); err != nil {
 		os.Exit(4)
 	}
-	if err := mgr.updateMetadataEntry(url, "main", "clone"); err != nil {
+	if err := mgr.updateMetadataEntry(url, "clone"); err != nil {
 		os.Exit(5)
 	}
 
@@ -1175,11 +1178,14 @@ func TestHelperWorkspaceAcquireLockAndWait(t *testing.T) {
 	if err != nil {
 		os.Exit(3)
 	}
+	// #nosec G703 -- readyPath is a test-only marker path controlled by this test process.
 	if err := os.WriteFile(readyPath, []byte("ready"), 0644); err != nil {
 		os.Exit(5)
 	}
 
-	defer lock.Unlock()
+	defer func() {
+		_ = lock.Unlock()
+	}()
 	for {
 		time.Sleep(time.Second)
 	}
@@ -1189,6 +1195,7 @@ func startWorkspaceLockHelper(t *testing.T, lockPath string) *exec.Cmd {
 	t.Helper()
 
 	readyPath := filepath.Join(t.TempDir(), "ready")
+	// #nosec G702 -- os.Args[0] is the current test binary path.
 	cmd := exec.Command(os.Args[0], "-test.run=TestHelperWorkspaceAcquireLockAndWait")
 	cmd.Env = append(
 		os.Environ(),

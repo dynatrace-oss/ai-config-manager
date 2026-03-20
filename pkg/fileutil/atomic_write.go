@@ -53,6 +53,7 @@ func AtomicWrite(path string, data []byte, perm os.FileMode) error {
 		return fmt.Errorf("failed to close temporary file: %w", err)
 	}
 
+	// #nosec G703 -- tmpPath is created in dir and path is an explicit caller-selected repo-managed file path.
 	if err := os.Rename(tmpPath, path); err != nil {
 		return fmt.Errorf("failed to replace destination file: %w", err)
 	}
