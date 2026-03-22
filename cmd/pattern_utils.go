@@ -13,6 +13,8 @@ import (
 // Package-level logger for command parsing logging
 var logger *slog.Logger
 
+const packageResourceType = "package"
+
 // SetLogger sets the logger for the cmd package.
 // This should be called by the application during initialization.
 func SetLogger(l *slog.Logger) {
@@ -141,9 +143,9 @@ func parseResourceType(s string) (resource.ResourceType, error) {
 		return resource.Command, nil
 	case "agent", "agents":
 		return resource.Agent, nil
-	case "package", "packages":
+	case packageResourceType, "packages":
 		return resource.PackageType, nil
 	default:
-		return "", fmt.Errorf("invalid resource type '%s': must be one of 'skill', 'command', 'agent', or 'package'", s)
+		return "", fmt.Errorf("invalid resource type '%s': must be one of 'skill', 'command', 'agent', or '%s'", s, packageResourceType)
 	}
 }

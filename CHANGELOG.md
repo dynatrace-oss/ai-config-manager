@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Resource validation workflow** — Added a validation workflow for resources to improve verification and release readiness checks.
+- **Local overlays and hardened shared manifests** — Added support for local manifest overlays and strengthened shared team manifest handling.
+
+### Fixed
+- **Verify handling of invalid package references** — `aimgr verify` now preserves invalid package references for clearer diagnostics instead of dropping them during verification.
+
 ## [3.5.0] - 2026-03-20
 
 ### Added

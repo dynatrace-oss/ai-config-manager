@@ -508,7 +508,7 @@ func TestBackwardCompatibility(t *testing.T) {
 		if !strings.Contains(output, manifest.ManifestFileName) {
 			t.Errorf("Error should mention manifest file, got: %s", output)
 		}
-		if !strings.Contains(output, "not found") || !strings.Contains(output, "no resources") {
+		if !strings.Contains(output, "neither") || !strings.Contains(output, "no resources") {
 			t.Errorf("Error should explain manifest not found, got: %s", output)
 		}
 	})

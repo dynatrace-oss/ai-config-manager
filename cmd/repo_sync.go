@@ -837,6 +837,28 @@ func printSyncOutputTable(so *syncOutput, verbose bool) {
 	fmt.Println()
 }
 
+func renderSyncOutput(so *syncOutput, format output.Format, verbose bool) error {
+	switch format {
+	case output.JSON:
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(so); err != nil {
+			return fmt.Errorf("failed to encode JSON output: %w", err)
+		}
+	case output.YAML:
+		enc := yaml.NewEncoder(os.Stdout)
+		enc.SetIndent(2)
+		defer func() { _ = enc.Close() }()
+		if err := enc.Encode(so); err != nil {
+			return fmt.Errorf("failed to encode YAML output: %w", err)
+		}
+	default: // table
+		printSyncOutputTable(so, verbose)
+	}
+
+	return nil
+}
+
 // runSync executes the sync command
 func runSync(cmd *cobra.Command, args []string) error {
 	// Create manager
@@ -1031,22 +1053,8 @@ func runSync(cmd *cobra.Command, args []string) error {
 	}
 
 	// Format and print output
-	switch format {
-	case output.JSON:
-		enc := json.NewEncoder(os.Stdout)
-		enc.SetIndent("", "  ")
-		if err := enc.Encode(so); err != nil {
-			return fmt.Errorf("failed to encode JSON output: %w", err)
-		}
-	case output.YAML:
-		enc := yaml.NewEncoder(os.Stdout)
-		enc.SetIndent(2)
-		defer func() { _ = enc.Close() }()
-		if err := enc.Encode(so); err != nil {
-			return fmt.Errorf("failed to encode YAML output: %w", err)
-		}
-	default: // table
-		printSyncOutputTable(so, syncVerboseFlag)
+	if err := renderSyncOutput(so, format, syncVerboseFlag); err != nil {
+		return err
 	}
 
 	// Regenerate modifications (skip in dry-run mode)
