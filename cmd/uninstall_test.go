@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/manifest"
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/pattern"
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/repo"
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/resource"
@@ -908,5 +909,40 @@ func TestUninstallArgProcessing(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestPersistUninstallManifestUpdates_RemovesFromBaseAndLocal(t *testing.T) {
+	projectDir := t.TempDir()
+
+	base := &manifest.Manifest{Resources: []string{"skill/shared", "skill/base-only"}}
+	local := &manifest.Manifest{Resources: []string{"skill/shared", "skill/local-only"}}
+
+	if err := base.Save(filepath.Join(projectDir, manifest.ManifestFileName)); err != nil {
+		t.Fatalf("save base manifest: %v", err)
+	}
+	if err := local.Save(filepath.Join(projectDir, manifest.LocalManifestFileName)); err != nil {
+		t.Fatalf("save local manifest: %v", err)
+	}
+
+	persistUninstallManifestUpdates(projectDir, []string{"skill/shared", "skill/local-only"})
+
+	baseAfter, err := manifest.Load(filepath.Join(projectDir, manifest.ManifestFileName))
+	if err != nil {
+		t.Fatalf("load base manifest after update: %v", err)
+	}
+	if baseAfter.Has("skill/shared") {
+		t.Fatalf("expected skill/shared removed from base manifest, got %v", baseAfter.Resources)
+	}
+	if !baseAfter.Has("skill/base-only") {
+		t.Fatalf("expected skill/base-only retained in base manifest, got %v", baseAfter.Resources)
+	}
+
+	localAfter, err := manifest.Load(filepath.Join(projectDir, manifest.LocalManifestFileName))
+	if err != nil {
+		t.Fatalf("load local manifest after update: %v", err)
+	}
+	if localAfter.Has("skill/shared") || localAfter.Has("skill/local-only") {
+		t.Fatalf("expected removed resources deleted from local manifest, got %v", localAfter.Resources)
 	}
 }

@@ -14,6 +14,7 @@ User-facing documentation for using aimgr day-to-day.
 - [Getting Started](user-guide/getting-started.md) - Installation, first steps, and common operations
 - [Configuration](user-guide/configuration.md) - Repository path, installation targets, and field mappings
 - [Sources](user-guide/sources.md) - Managing remote and local resource sources
+- [Team and Multi-Project Workflows](user-guide/team-workflows.md) - Recommended patterns for shared project setup, `ai.package.local.yaml` overlays, and multi-project use
 
 **Use this section for:** Learning how to use aimgr, configuring your setup, and managing resources.
 

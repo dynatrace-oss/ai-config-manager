@@ -119,8 +119,8 @@ func loadStdinForApply() (*Manifest, error) {
 }
 
 func loadRemoteForApply(manifestURL *url.URL, client *http.Client) (*Manifest, error) {
-	if path.Base(manifestURL.Path) != ManifestFileName {
-		return nil, fmt.Errorf("remote manifest URL must point directly to %s", ManifestFileName)
+	if err := validateRemoteManifestURL(manifestURL); err != nil {
+		return nil, err
 	}
 
 	if client == nil {
@@ -155,6 +155,27 @@ func loadRemoteForApply(manifestURL *url.URL, client *http.Client) (*Manifest, e
 	}
 
 	return manifest, nil
+}
+
+func validateRemoteManifestURL(manifestURL *url.URL) error {
+	if path.Base(manifestURL.Path) != ManifestFileName {
+		return fmt.Errorf("remote manifest URL must point directly to %s", ManifestFileName)
+	}
+
+	host := strings.ToLower(manifestURL.Hostname())
+	if host != "github.com" {
+		return nil
+	}
+
+	segments := strings.Split(strings.Trim(manifestURL.EscapedPath(), "/"), "/")
+	for _, segment := range segments {
+		switch segment {
+		case "blob", "tree":
+			return fmt.Errorf("GitHub web URLs using '/%s/' are not supported for repo apply-manifest; use a raw file URL that points directly to %s (for example https://raw.githubusercontent.com/<owner>/<repo>/<tag-or-ref>/path/%s)", segment, ManifestFileName, ManifestFileName)
+		}
+	}
+
+	return nil
 }
 
 func parseManifestYAML(data []byte) (*Manifest, error) {

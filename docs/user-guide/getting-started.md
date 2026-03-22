@@ -23,13 +23,16 @@ cd ~/my-project
 aimgr install skill/pdf-processing
 ```
 
-### Bootstrap from a shared manifest (alternative to manual add)
+### Bootstrap from a shared team manifest (recommended for teams)
 
-If your team publishes an `ai.repo.yaml` at a central location, everyone else can bootstrap from that file:
+If your team agrees on shared sources for a project, publish that source set as one central `ai.repo.yaml` and have developers/CI bootstrap from that URL:
 
 ```bash
 # Shared manifest URL
-aimgr repo apply-manifest https://example.com/platform/ai.repo.yaml
+aimgr repo apply-manifest https://example.com/team/project-a/ai.repo.yaml
+
+# Pinned/tagged GitHub raw file URL (stable baseline)
+aimgr repo apply-manifest https://raw.githubusercontent.com/your-org/team-configs/v1.2.0/manifests/project-a.ai.repo.yaml
 
 # Or a checked-out local copy of the same manifest
 aimgr repo apply-manifest ./ai.repo.yaml
@@ -37,9 +40,29 @@ aimgr repo apply-manifest ./ai.repo.yaml
 
 `repo apply-manifest` will auto-initialize a fresh repository when needed, then merge sources into local `ai.repo.yaml`.
 
+Recommended bootstrap flow for local onboarding:
+
+```bash
+aimgr repo apply-manifest <shared-manifest-url>
+aimgr repo sync
+aimgr install
+```
+
+Recommended bootstrap flow for CI (same commands, non-interactive):
+
+```bash
+aimgr repo apply-manifest <shared-manifest-url>
+aimgr repo sync
+aimgr install
+```
+
+Important URL constraint for GitHub-hosted manifests:
+- supported: URLs that fetch the manifest file content directly (for example `raw.githubusercontent.com/.../ai.repo.yaml`)
+- not supported: GitHub web page URLs such as `https://github.com/<owner>/<repo>/blob/<ref>/.../ai.repo.yaml` or `/tree/<ref>/...`
+
 Important workflow:
-- a team can publish one shared `ai.repo.yaml` somewhere central
-- users can apply that shared manifest into their own local repo
+- a team publishes one shared `ai.repo.yaml` as the project's baseline
+- users and CI apply that shared manifest into their own local repo
 - users can apply multiple manifests over time, and aimgr merges all sources into the same local `ai.repo.yaml`
 - if someone wants to publish their own current setup, they can use `aimgr repo show-manifest` and commit that output somewhere shareable
 

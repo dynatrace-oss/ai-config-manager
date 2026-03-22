@@ -84,6 +84,52 @@ Think of `ai.package.yaml` as:
 
 ---
 
+## 3. Optional local overlay: `ai.package.local.yaml`
+
+Projects can also use an **optional** local overlay file: `ai.package.local.yaml`.
+
+Use it when you need durable, private project-local additions without editing the committed
+`ai.package.yaml`.
+
+- Good fit: personal helper skills/commands you want to keep across `verify`/`repair`
+- Not ideal: one-off experiments (use `aimgr install ... --no-save` for temporary installs)
+
+Important behavior:
+
+- Overlay is **opt-in only**.
+- aimgr reads `ai.package.local.yaml` **when present**.
+- aimgr does **not** auto-create `ai.package.local.yaml`.
+- aimgr does **not** auto-edit `.gitignore` for you.
+
+### Merge semantics (base + local overlay)
+
+When both files exist, aimgr computes an effective manifest view:
+
+- `resources` = union of base + local
+  - preserve base order
+  - append local-only additions
+  - de-duplicate exact duplicates
+- `install.targets` = union of base targets + local targets
+- Explicit CLI `--target` always overrides manifest targets
+
+This merged view is used by project reconciliation commands such as:
+
+- `aimgr install`
+- `aimgr verify`
+- `aimgr repair`
+- `aimgr list`
+
+Uninstall persistence also follows merged-manifest behavior: when persisting removals,
+`aimgr uninstall` removes the resource from **every** manifest file that declares it.
+
+### Expected failure mode for missing overlay resources
+
+If `ai.package.local.yaml` references resources that cannot be resolved from your local
+repository sources, those failures are surfaced explicitly by install/verify/repair flows.
+They are not silently ignored.
+
+---
+
 ## How they work together
 
 The two manifests have different jobs:
@@ -91,7 +137,8 @@ The two manifests have different jobs:
 | File | Purpose |
 |------|---------|
 | `ai.repo.yaml` | Tracks resource sources for your local aimgr repository |
-| `ai.package.yaml` | Tracks which resources a project depends on |
+| `ai.package.yaml` | Tracks committed project dependencies |
+| `ai.package.local.yaml` | Optional local-only overlay for private project additions |
 
 In short:
 
@@ -147,6 +194,12 @@ Use **`ai.package.yaml`** when you want to:
 - install all project resources with `aimgr install`
 - verify whether a project is in sync
 
+Use **`ai.package.local.yaml`** when you want to:
+
+- keep private project-local additions out of git
+- make local additions survive install/verify/repair/list reconciliation
+- layer personal resources on top of the team baseline declared in `ai.package.yaml`
+
 ---
 
 ## Owned folders and reconciliation
@@ -162,15 +215,17 @@ Examples include `.claude/commands`, `.opencode/skills`, or `.github/skills`.
 Two commands define cleanup and recovery behavior:
 
 - `aimgr clean` empties owned resource directories
-- `aimgr repair` reconciles owned directories to `ai.package.yaml`
+- `aimgr repair` reconciles owned directories to the effective manifest view
+  (`ai.package.yaml` + optional `ai.package.local.yaml`)
 
 In practice:
 
-- If a resource is declared in `ai.package.yaml`, `repair` ensures it is installed
+- If a resource is declared in the effective manifest view, `repair` ensures it is installed
 - If undeclared content exists in owned directories, `repair` removes it
 - If you manually delete a declared resource, `repair` reinstalls it
 
-If you want to remove a resource permanently, update `ai.package.yaml`
+If you want to remove a resource permanently, update the manifest that declares it
+(committed and/or local overlay)
 (for example with `aimgr uninstall <resource>` without `--no-save`).
 
 For a full reset-and-restore flow:

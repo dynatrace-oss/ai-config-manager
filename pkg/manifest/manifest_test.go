@@ -495,3 +495,143 @@ func TestIsValidTarget(t *testing.T) {
 		})
 	}
 }
+
+func TestMerge_OverlaySemantics(t *testing.T) {
+	base := &Manifest{
+		Resources: []string{"skill/base", "command/shared", "agent/base"},
+		Install:   InstallConfig{Targets: []string{"claude", "opencode"}},
+	}
+	local := &Manifest{
+		Resources: []string{"command/shared", "skill/local", "agent/local"},
+		Install:   InstallConfig{Targets: []string{"opencode", "copilot"}},
+	}
+
+	merged := Merge(base, local)
+
+	wantResources := []string{"skill/base", "command/shared", "agent/base", "skill/local", "agent/local"}
+	if len(merged.Resources) != len(wantResources) {
+		t.Fatalf("resources length = %d, want %d (%v)", len(merged.Resources), len(wantResources), merged.Resources)
+	}
+	for i, want := range wantResources {
+		if merged.Resources[i] != want {
+			t.Fatalf("resources[%d] = %q, want %q (all=%v)", i, merged.Resources[i], want, merged.Resources)
+		}
+	}
+
+	wantTargets := []string{"claude", "opencode", "copilot"}
+	if len(merged.Install.Targets) != len(wantTargets) {
+		t.Fatalf("targets length = %d, want %d (%v)", len(merged.Install.Targets), len(wantTargets), merged.Install.Targets)
+	}
+	for i, want := range wantTargets {
+		if merged.Install.Targets[i] != want {
+			t.Fatalf("targets[%d] = %q, want %q (all=%v)", i, merged.Install.Targets[i], want, merged.Install.Targets)
+		}
+	}
+}
+
+func TestLoadProjectManifests(t *testing.T) {
+	t.Run("base only", func(t *testing.T) {
+		projectDir := t.TempDir()
+		basePath := filepath.Join(projectDir, ManifestFileName)
+		if err := os.WriteFile(basePath, []byte("resources:\n  - skill/base\n"), 0644); err != nil {
+			t.Fatalf("write base manifest: %v", err)
+		}
+
+		loaded, err := LoadProjectManifests(projectDir)
+		if err != nil {
+			t.Fatalf("LoadProjectManifests() error = %v", err)
+		}
+		if loaded.Base == nil || loaded.Local != nil || loaded.Effective == nil {
+			t.Fatalf("unexpected loaded manifests: base=%v local=%v effective=%v", loaded.Base != nil, loaded.Local != nil, loaded.Effective != nil)
+		}
+		if !loaded.Effective.Has("skill/base") {
+			t.Fatalf("effective manifest missing base resource: %v", loaded.Effective.Resources)
+		}
+	})
+
+	t.Run("base plus local overlay", func(t *testing.T) {
+		projectDir := t.TempDir()
+		basePath := filepath.Join(projectDir, ManifestFileName)
+		localPath := filepath.Join(projectDir, LocalManifestFileName)
+
+		baseContent := `resources:
+  - skill/base
+  - command/shared
+install:
+  targets:
+    - claude
+`
+		localContent := `resources:
+  - command/shared
+  - skill/local
+install:
+  targets:
+    - opencode
+`
+
+		if err := os.WriteFile(basePath, []byte(baseContent), 0644); err != nil {
+			t.Fatalf("write base manifest: %v", err)
+		}
+		if err := os.WriteFile(localPath, []byte(localContent), 0644); err != nil {
+			t.Fatalf("write local manifest: %v", err)
+		}
+
+		loaded, err := LoadProjectManifests(projectDir)
+		if err != nil {
+			t.Fatalf("LoadProjectManifests() error = %v", err)
+		}
+
+		wantResources := []string{"skill/base", "command/shared", "skill/local"}
+		if len(loaded.Effective.Resources) != len(wantResources) {
+			t.Fatalf("effective resources len = %d, want %d (%v)", len(loaded.Effective.Resources), len(wantResources), loaded.Effective.Resources)
+		}
+		for i, want := range wantResources {
+			if loaded.Effective.Resources[i] != want {
+				t.Fatalf("effective resources[%d] = %q, want %q", i, loaded.Effective.Resources[i], want)
+			}
+		}
+
+		wantTargets := []string{"claude", "opencode"}
+		if len(loaded.Effective.Install.Targets) != len(wantTargets) {
+			t.Fatalf("effective targets len = %d, want %d (%v)", len(loaded.Effective.Install.Targets), len(wantTargets), loaded.Effective.Install.Targets)
+		}
+		for i, want := range wantTargets {
+			if loaded.Effective.Install.Targets[i] != want {
+				t.Fatalf("effective targets[%d] = %q, want %q", i, loaded.Effective.Install.Targets[i], want)
+			}
+		}
+	})
+
+	t.Run("local only", func(t *testing.T) {
+		projectDir := t.TempDir()
+		localPath := filepath.Join(projectDir, LocalManifestFileName)
+		if err := os.WriteFile(localPath, []byte("resources:\n  - skill/local-only\n"), 0644); err != nil {
+			t.Fatalf("write local manifest: %v", err)
+		}
+
+		loaded, err := LoadProjectManifests(projectDir)
+		if err != nil {
+			t.Fatalf("LoadProjectManifests() error = %v", err)
+		}
+		if loaded.Base != nil || loaded.Local == nil || loaded.Effective == nil {
+			t.Fatalf("unexpected loaded manifests: base=%v local=%v effective=%v", loaded.Base != nil, loaded.Local != nil, loaded.Effective != nil)
+		}
+		if !loaded.Effective.Has("skill/local-only") {
+			t.Fatalf("effective manifest missing local-only resource: %v", loaded.Effective.Resources)
+		}
+	})
+
+	t.Run("none present", func(t *testing.T) {
+		projectDir := t.TempDir()
+		loaded, err := LoadProjectManifests(projectDir)
+		if err != nil {
+			t.Fatalf("LoadProjectManifests() error = %v", err)
+		}
+		if loaded.HasAny() {
+			t.Fatalf("expected HasAny=false when no manifest files exist")
+		}
+		if loaded.Effective != nil {
+			t.Fatalf("expected nil effective manifest when no files exist")
+		}
+	})
+}

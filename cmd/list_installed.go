@@ -37,9 +37,8 @@ func newListInstalledState(projectPath string) *listInstalledState {
 		packageCache: make(map[string]*resource.Package),
 	}
 
-	manifestPath := filepath.Join(projectPath, manifest.ManifestFileName)
-	m, err := manifest.Load(manifestPath)
-	if err != nil {
+	m, _, err := loadEffectiveProjectManifest(projectPath)
+	if err != nil || m == nil {
 		return state // No manifest (or unreadable manifest): keep graceful degradation
 	}
 

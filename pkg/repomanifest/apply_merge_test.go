@@ -1,6 +1,7 @@
 package repomanifest
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -93,6 +94,67 @@ func TestMergeForApply_IncludeReplaceAndPreserve(t *testing.T) {
 	}
 }
 
+func TestMergeForApply_UpdatesRefWhenCanonicalSourceMatches(t *testing.T) {
+	current := &Manifest{Version: 1, Sources: []*Source{{
+		Name:    "team-tools",
+		URL:     "https://github.com/example/tools",
+		Ref:     "v1.2.0",
+		Include: []string{"skill/pdf*"},
+	}}}
+	incoming := &Manifest{Version: 1, Sources: []*Source{{
+		Name:    "team-tools",
+		URL:     "https://github.com/example/tools",
+		Ref:     "v1.3.0",
+		Include: []string{"skill/pdf*"},
+	}}}
+
+	merged, report, err := MergeForApply(current, incoming, ApplyMergeOptions{})
+	if err != nil {
+		t.Fatalf("MergeForApply() error = %v", err)
+	}
+	if got := merged.Sources[0].Ref; got != "v1.3.0" {
+		t.Fatalf("expected ref to be updated to v1.3.0, got %q", got)
+	}
+	if report.Updated() != 1 || report.NoOp() != 0 || report.Added() != 0 || report.Conflicts() != 0 {
+		t.Fatalf("unexpected report counts: add=%d update=%d noop=%d conflict=%d", report.Added(), report.Updated(), report.NoOp(), report.Conflicts())
+	}
+	if !strings.Contains(report.Changes[0].Message, "updated source ref") {
+		t.Fatalf("expected update message to mention ref update, got %q", report.Changes[0].Message)
+	}
+}
+
+func TestMergeForApply_UpdatesRefAndPreservesIncludeInPreserveMode(t *testing.T) {
+	current := &Manifest{Version: 1, Sources: []*Source{{
+		Name:    "team-tools",
+		URL:     "https://github.com/example/tools",
+		Ref:     "v1.2.0",
+		Include: []string{"skill/pdf*"},
+	}}}
+	incoming := &Manifest{Version: 1, Sources: []*Source{{
+		Name:    "team-tools",
+		URL:     "https://github.com/example/tools",
+		Ref:     "v1.3.0",
+		Include: []string{"command/lint-*"},
+	}}}
+
+	merged, report, err := MergeForApply(current, incoming, ApplyMergeOptions{IncludeMode: IncludeMergePreserve})
+	if err != nil {
+		t.Fatalf("MergeForApply() error = %v", err)
+	}
+	if got := merged.Sources[0].Ref; got != "v1.3.0" {
+		t.Fatalf("expected ref to be updated to v1.3.0, got %q", got)
+	}
+	if got := strings.Join(merged.Sources[0].Include, ","); got != "skill/pdf*" {
+		t.Fatalf("expected preserve mode to keep include filters, got %s", got)
+	}
+	if report.Updated() != 1 || report.NoOp() != 0 {
+		t.Fatalf("expected one update and no noops, got update=%d noop=%d", report.Updated(), report.NoOp())
+	}
+	if !strings.Contains(report.Changes[0].Message, "updated source ref") {
+		t.Fatalf("expected update message to mention ref update, got %q", report.Changes[0].Message)
+	}
+}
+
 func TestMergeForApply_InvalidIncludeMode(t *testing.T) {
 	current := &Manifest{Version: 1, Sources: []*Source{}}
 	incoming := &Manifest{Version: 1, Sources: []*Source{}}
@@ -103,5 +165,56 @@ func TestMergeForApply_InvalidIncludeMode(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "invalid include merge mode") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestMergeForApply_ConflictOnSameCanonicalURLDifferentName(t *testing.T) {
+	current := &Manifest{Version: 1, Sources: []*Source{{
+		Name: "team-tools",
+		URL:  "https://github.com/example/tools.git/",
+	}}}
+	incoming := &Manifest{Version: 1, Sources: []*Source{{
+		Name: "platform-tools",
+		URL:  "https://github.com/EXAMPLE/tools",
+	}}}
+
+	merged, report, err := MergeForApply(current, incoming, ApplyMergeOptions{})
+	if err != nil {
+		t.Fatalf("MergeForApply() error = %v", err)
+	}
+	if report.Conflicts() != 1 {
+		t.Fatalf("expected 1 conflict, got %d", report.Conflicts())
+	}
+	if !strings.Contains(report.Changes[0].Message, "same canonical location") {
+		t.Fatalf("expected canonical location conflict message, got %q", report.Changes[0].Message)
+	}
+	if len(merged.Sources) != 1 || merged.Sources[0].Name != "team-tools" {
+		t.Fatalf("expected existing source to be preserved, got %+v", merged.Sources)
+	}
+}
+
+func TestMergeForApply_ConflictOnSameCanonicalPathDifferentName(t *testing.T) {
+	baseDir := t.TempDir()
+	current := &Manifest{Version: 1, Sources: []*Source{{
+		Name: "team-local",
+		Path: baseDir,
+	}}}
+	incoming := &Manifest{Version: 1, Sources: []*Source{{
+		Name: "platform-local",
+		Path: filepath.Join(baseDir, "."),
+	}}}
+
+	merged, report, err := MergeForApply(current, incoming, ApplyMergeOptions{})
+	if err != nil {
+		t.Fatalf("MergeForApply() error = %v", err)
+	}
+	if report.Conflicts() != 1 {
+		t.Fatalf("expected 1 conflict, got %d", report.Conflicts())
+	}
+	if !strings.Contains(report.Changes[0].Message, "same canonical location") {
+		t.Fatalf("expected canonical location conflict message, got %q", report.Changes[0].Message)
+	}
+	if len(merged.Sources) != 1 || merged.Sources[0].Name != "team-local" {
+		t.Fatalf("expected existing source to be preserved, got %+v", merged.Sources)
 	}
 }

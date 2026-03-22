@@ -22,7 +22,102 @@ func SetLogger(l *slog.Logger) {
 const (
 	// ManifestFileName is the default name for project manifest files
 	ManifestFileName = "ai.package.yaml"
+	// LocalManifestFileName is the optional local overlay manifest.
+	LocalManifestFileName = "ai.package.local.yaml"
 )
+
+// ProjectManifests contains project manifest files and their merged effective view.
+type ProjectManifests struct {
+	BasePath  string
+	LocalPath string
+
+	Base      *Manifest
+	Local     *Manifest
+	Effective *Manifest
+}
+
+// HasAny reports whether at least one project manifest file is present.
+func (p *ProjectManifests) HasAny() bool {
+	if p == nil {
+		return false
+	}
+	return p.Base != nil || p.Local != nil
+}
+
+// LoadProjectManifests loads ai.package.yaml and optional ai.package.local.yaml,
+// then builds a merged effective manifest view.
+func LoadProjectManifests(projectPath string) (*ProjectManifests, error) {
+	basePath := filepath.Join(projectPath, ManifestFileName)
+	localPath := filepath.Join(projectPath, LocalManifestFileName)
+
+	result := &ProjectManifests{
+		BasePath:  basePath,
+		LocalPath: localPath,
+	}
+
+	if Exists(basePath) {
+		base, err := Load(basePath)
+		if err != nil {
+			return nil, err
+		}
+		result.Base = base
+	}
+
+	if Exists(localPath) {
+		local, err := Load(localPath)
+		if err != nil {
+			return nil, err
+		}
+		result.Local = local
+	}
+
+	if result.HasAny() {
+		result.Effective = Merge(result.Base, result.Local)
+	}
+
+	return result, nil
+}
+
+// Merge builds an effective manifest using additive overlay semantics:
+// - resources: base order preserved, local-only entries appended, exact duplicates removed
+// - install.targets: base order preserved, local-only entries appended, exact duplicates removed
+func Merge(base, local *Manifest) *Manifest {
+	merged := &Manifest{
+		Resources: []string{},
+		Install: InstallConfig{
+			Targets: []string{},
+		},
+	}
+
+	if base != nil {
+		merged.Resources = append(merged.Resources, base.Resources...)
+		merged.Install.Targets = append(merged.Install.Targets, base.Install.Targets...)
+	}
+
+	if local != nil {
+		merged.Resources = appendUniqueStrings(merged.Resources, local.Resources...)
+		merged.Install.Targets = appendUniqueStrings(merged.Install.Targets, local.Install.Targets...)
+	}
+
+	return merged
+}
+
+func appendUniqueStrings(existing []string, candidates ...string) []string {
+	seen := make(map[string]struct{}, len(existing))
+	for _, item := range existing {
+		seen[item] = struct{}{}
+	}
+
+	for _, candidate := range candidates {
+		if _, ok := seen[candidate]; ok {
+			continue
+		}
+		existing = append(existing, candidate)
+		seen[candidate] = struct{}{}
+	}
+
+	return existing
+}
 
 // Manifest represents a project's AI resource dependencies
 // Similar to npm's package.json, it declares which resources should be installed

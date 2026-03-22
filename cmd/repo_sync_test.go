@@ -377,7 +377,14 @@ func TestRunSync_SingleSource(t *testing.T) {
 // TestRunSync_MultipleSources tests syncing from multiple sources
 func TestRunSync_MultipleSources(t *testing.T) {
 	source1 := createTestSource(t)
-	source2 := createTestSource(t)
+	source2 := t.TempDir()
+	cmdDir2 := filepath.Join(source2, "commands")
+	if err := os.MkdirAll(cmdDir2, 0755); err != nil {
+		t.Fatalf("failed to create commands dir for source2: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(cmdDir2, "source2-only.md"), []byte("---\ndescription: source2 only\n---\n# source2-only"), 0644); err != nil {
+		t.Fatalf("failed to create source2 command: %v", err)
+	}
 
 	// Create manifest with multiple sources
 	sources := []*repomanifest.Source{
@@ -399,8 +406,9 @@ func TestRunSync_MultipleSources(t *testing.T) {
 		t.Fatalf("sync command failed: %v", err)
 	}
 
-	// Verify resources from both sources were imported (should be deduplicated)
+	// Verify resources from both sources were imported
 	verifyResourcesInRepo(t, repoPath, resource.Command, "sync-test-cmd", "test-command", "pdf-command")
+	verifyResourcesInRepo(t, repoPath, resource.Command, "source2-only")
 	verifyResourcesInRepo(t, repoPath, resource.Skill, "sync-test-skill", "pdf-processing", "image-processing")
 	verifyResourcesInRepo(t, repoPath, resource.Agent, "sync-test-agent", "code-reviewer")
 
@@ -2015,33 +2023,68 @@ func TestRunSync_CrossSourceNameCollision(t *testing.T) {
 	repoPath, cleanup := setupTestManifest(t, sources)
 	defer cleanup()
 
-	// First sync: both sources succeed. Source B syncs after A,
-	// so "shared-cmd" metadata ends up pointing to Source B.
+	// First sync should be rejected: same resource name from different canonical sources.
 	err := runSync(syncCmd, []string{})
-	if err != nil {
-		t.Fatalf("first sync failed: %v", err)
+	if err == nil {
+		t.Fatal("expected sync collision error, got nil")
+	}
+	for _, expected := range []string{"command/shared-cmd", "source-a", "source-b", "sync rejected"} {
+		if !strings.Contains(err.Error(), expected) {
+			t.Fatalf("expected collision error to contain %q, got: %v", expected, err)
+		}
 	}
 
-	// Verify all resources exist
-	verifyResourcesInRepo(t, repoPath, resource.Command, "shared-cmd", "cmd-a", "cmd-b")
+	if _, statErr := os.Stat(filepath.Join(repoPath, "commands", "shared-cmd.md")); !os.IsNotExist(statErr) {
+		t.Fatalf("rejected sync must not import shared-cmd, stat err: %v", statErr)
+	}
+}
 
-	// Now remove "shared-cmd" from Source A (simulating the resource being deleted
-	// from source A between syncs). Source B still has it.
-	if err := os.Remove(filepath.Join(cmdDirA, "shared-cmd.md")); err != nil {
-		t.Fatalf("failed to remove shared-cmd from source A: %v", err)
+func TestRunSync_RejectsConflictingResourceNamesAcrossDifferentSources(t *testing.T) {
+	sourceA := t.TempDir()
+	sourceB := t.TempDir()
+
+	cmdDirA := filepath.Join(sourceA, "commands")
+	if err := os.MkdirAll(cmdDirA, 0755); err != nil {
+		t.Fatalf("failed to create commands dir for source A: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(cmdDirA, "shared-cmd.md"), []byte("---\ndescription: shared from A\n---\n# shared-cmd"), 0644); err != nil {
+		t.Fatalf("failed to create command in source A: %v", err)
 	}
 
-	// Second sync: Source A no longer has "shared-cmd" but Source B still does.
-	// Orphan detection for Source A should NOT remove "shared-cmd" because
-	// its metadata now points to Source B.
-	err = runSync(syncCmd, []string{})
-	if err != nil {
-		t.Fatalf("second sync failed: %v", err)
+	cmdDirB := filepath.Join(sourceB, "commands")
+	if err := os.MkdirAll(cmdDirB, 0755); err != nil {
+		t.Fatalf("failed to create commands dir for source B: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(cmdDirB, "shared-cmd.md"), []byte("---\ndescription: shared from B\n---\n# shared-cmd"), 0644); err != nil {
+		t.Fatalf("failed to create command in source B: %v", err)
 	}
 
-	// "shared-cmd" should still exist (not incorrectly removed)
-	verifyResourcesInRepo(t, repoPath, resource.Command, "shared-cmd", "cmd-b")
+	sources := []*repomanifest.Source{
+		{Name: "source-a", Path: sourceA},
+		{Name: "source-b", Path: sourceB},
+	}
+	repoPath, cleanup := setupTestManifest(t, sources)
+	defer cleanup()
 
-	// "cmd-a" should still exist (it wasn't removed from source A)
-	verifyResourcesInRepo(t, repoPath, resource.Command, "cmd-a")
+	err := runSync(syncCmd, []string{})
+	if err == nil {
+		t.Fatal("expected sync collision error, got nil")
+	}
+	for _, expected := range []string{"sync rejected", "command/shared-cmd", "source-a", "source-b", "include filters"} {
+		if !strings.Contains(err.Error(), expected) {
+			t.Fatalf("expected error to contain %q, got: %v", expected, err)
+		}
+	}
+
+	manifest, loadErr := repomanifest.Load(repoPath)
+	if loadErr != nil {
+		t.Fatalf("failed to load manifest after rejected sync: %v", loadErr)
+	}
+	if len(manifest.Sources) != 2 {
+		t.Fatalf("rejected sync must not alter manifest sources, got %d", len(manifest.Sources))
+	}
+
+	if _, statErr := os.Stat(filepath.Join(repoPath, "commands", "shared-cmd.md")); !os.IsNotExist(statErr) {
+		t.Fatalf("rejected sync must not import conflicting resource, stat err: %v", statErr)
+	}
 }

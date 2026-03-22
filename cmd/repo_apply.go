@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -24,15 +25,21 @@ Accepted inputs in v1:
   - Stdin via - or /dev/stdin
   - HTTP(S) URL that points directly to ai.repo.yaml
 
+GitHub URL note:
+  - Use raw file URLs (for example raw.githubusercontent.com/.../ai.repo.yaml)
+  - GitHub web URLs with /blob/<ref>/... or /tree/<ref>/... are not valid manifest file URLs
+
 Manifest relationship:
   - repo show-manifest reads and prints the current local ai.repo.yaml
   - repo apply-manifest <path-or-url> reads another ai.repo.yaml and merges it into that same local file
 
 Merge behavior:
   - New source name: added
+  - Apply is additive: existing local sources not present in the incoming manifest are kept
   - Same source name + identical definition: no-op
   - Same source name + different location: conflict (never overwritten)
   - Same location with different include filters: replace or preserve (configurable)
+  - To remove stale sources after a team manifest changes, use repo drop-source explicitly
 
 Fresh repository behavior:
   - apply-manifest auto-initializes the local repository (same bootstrap as repo init)
@@ -50,6 +57,17 @@ Relationship to repo init:
 
 	  # Apply a shared manifest from URL
 	  aimgr repo apply-manifest https://example.com/platform/ai.repo.yaml
+
+	  # Apply a pinned shared manifest from a GitHub tag/ref
+	  aimgr repo apply-manifest https://raw.githubusercontent.com/example/platform-configs/v1.2.0/manifests/ai.repo.yaml
+
+	  # Recommended bootstrap flow for developers and CI
+	  aimgr repo apply-manifest https://example.com/platform/ai.repo.yaml
+	  aimgr repo sync
+	  aimgr install
+
+	  # Re-apply is additive; stale sources are removed explicitly
+	  aimgr repo drop-source old-source
 
 	  # Pipe the current manifest back into apply-manifest (no-op round-trip)
 	  aimgr repo show-manifest | aimgr repo apply-manifest -
@@ -109,7 +127,7 @@ func runApplyManifest(cmd *cobra.Command, args []string) error {
 	printApplyReport(report, repoApplyDryRunFlag)
 
 	if report.HasConflicts() {
-		return fmt.Errorf("manifest apply has %d conflict(s); resolve conflicts and retry", report.Conflicts())
+		return fmt.Errorf("manifest apply has %d conflict(s); resolve conflicts and retry:\n  - %s", report.Conflicts(), strings.Join(conflictMessages(report), "\n  - "))
 	}
 
 	if repoApplyDryRunFlag {
@@ -133,6 +151,22 @@ func runApplyManifest(cmd *cobra.Command, args []string) error {
 	fmt.Println("\n✓ Applied manifest successfully")
 
 	return nil
+}
+
+func conflictMessages(report *repomanifest.ApplyMergeReport) []string {
+	if report == nil {
+		return nil
+	}
+
+	messages := make([]string, 0, report.Conflicts())
+	for _, change := range report.Changes {
+		if change.Action != repomanifest.ApplyActionConflict {
+			continue
+		}
+		messages = append(messages, fmt.Sprintf("%s: %s", change.Name, change.Message))
+	}
+
+	return messages
 }
 
 func printApplyReport(report *repomanifest.ApplyMergeReport, dryRun bool) {

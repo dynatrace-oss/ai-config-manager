@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -78,6 +79,12 @@ type syncOutput struct {
 type syncOutputMode struct {
 	format  output.Format
 	verbose bool
+}
+
+type sourceResourceClaim struct {
+	canonicalSourceID string
+	sourceName        string
+	sourceLocation    string
 }
 
 func (m syncOutputMode) human() bool {
@@ -334,6 +341,178 @@ func scanSourceResources(sourcePath string) (map[resource.ResourceType]map[strin
 	return result, nil
 }
 
+func resolveSourcePathForSync(src *repomanifest.Source, manager *repo.Manager) (string, error) {
+	if src.URL != "" {
+		repoPath := manager.GetRepoPath()
+		wsMgr, err := workspace.NewManager(repoPath)
+		if err != nil {
+			return "", fmt.Errorf("failed to create workspace manager: %w", err)
+		}
+
+		sourceStr := src.URL
+		if src.Ref != "" {
+			sourceStr = sourceStr + "@" + src.Ref
+		}
+		if src.Subpath != "" {
+			sourceStr = sourceStr + "/" + src.Subpath
+		}
+
+		parsed, err := source.ParseSource(sourceStr)
+		if err != nil {
+			return "", fmt.Errorf("invalid source URL: %w", err)
+		}
+
+		cloneURL, err := source.GetCloneURL(parsed)
+		if err != nil {
+			return "", fmt.Errorf("failed to get clone URL: %w", err)
+		}
+
+		sourcePath, err := prepareRemoteSourcePath(wsMgr, cloneURL, src.Ref)
+		if err != nil {
+			return "", err
+		}
+
+		if src.Subpath != "" {
+			sourcePath = filepath.Join(sourcePath, src.Subpath)
+		}
+
+		return sourcePath, nil
+	}
+
+	if src.Path != "" {
+		absPath, err := filepath.Abs(src.Path)
+		if err != nil {
+			return "", fmt.Errorf("invalid path %s: %w", src.Path, err)
+		}
+		return absPath, nil
+	}
+
+	return "", fmt.Errorf("source must have either URL or Path")
+}
+
+func applyIncludeFilterToDiscovered(sourceResources map[resource.ResourceType]map[string]bool, include []string) error {
+	if len(include) == 0 {
+		return nil
+	}
+
+	mm, err := pattern.NewMultiMatcher(include)
+	if err != nil {
+		return fmt.Errorf("invalid include patterns: %w", err)
+	}
+
+	for resType, typeSet := range sourceResources {
+		for name := range typeSet {
+			res := &resource.Resource{Type: resType, Name: name}
+			if !mm.Match(res) {
+				delete(typeSet, name)
+			}
+		}
+		if len(typeSet) == 0 {
+			delete(sourceResources, resType)
+		}
+	}
+
+	return nil
+}
+
+func canonicalSourceID(src *repomanifest.Source) string {
+	if src == nil {
+		return ""
+	}
+
+	if src.ID != "" {
+		return src.ID
+	}
+
+	return repomanifest.GenerateSourceID(src)
+}
+
+func sourceLocationSummary(src *repomanifest.Source) string {
+	if src == nil {
+		return "unknown location"
+	}
+
+	if src.URL != "" {
+		if src.Ref != "" {
+			if src.Subpath != "" {
+				return fmt.Sprintf("url %q (ref %q, subpath %q)", src.URL, src.Ref, src.Subpath)
+			}
+			return fmt.Sprintf("url %q (ref %q)", src.URL, src.Ref)
+		}
+		if src.Subpath != "" {
+			return fmt.Sprintf("url %q (subpath %q)", src.URL, src.Subpath)
+		}
+		return fmt.Sprintf("url %q", src.URL)
+	}
+
+	if src.Path != "" {
+		return fmt.Sprintf("path %q", src.Path)
+	}
+
+	return "unknown location"
+}
+
+func detectSyncResourceCollisions(manifest *repomanifest.Manifest, manager *repo.Manager) error {
+	if manifest == nil || len(manifest.Sources) == 0 {
+		return nil
+	}
+
+	claims := make(map[string]sourceResourceClaim)
+	conflicts := make([]string, 0)
+
+	for _, src := range manifest.Sources {
+		sourcePath, err := resolveSourcePathForSync(src, manager)
+		if err != nil {
+			// Keep existing partial-sync behavior for unreachable/invalid sources.
+			continue
+		}
+
+		sourceResources, err := scanSourceResources(sourcePath)
+		if err != nil {
+			continue
+		}
+
+		if err := applyIncludeFilterToDiscovered(sourceResources, src.Include); err != nil {
+			return fmt.Errorf("source %q has invalid include filters for sync collision precheck: %w", src.Name, err)
+		}
+
+		currentSourceID := canonicalSourceID(src)
+		currentLocation := sourceLocationSummary(src)
+
+		for resType, typeSet := range sourceResources {
+			for name := range typeSet {
+				resourceRef := fmt.Sprintf("%s/%s", resType, name)
+				if claim, exists := claims[resourceRef]; exists {
+					if claim.canonicalSourceID != currentSourceID {
+						conflicts = append(conflicts, fmt.Sprintf(
+							"%s provided by source %q (%s) and source %q (%s)",
+							resourceRef,
+							claim.sourceName,
+							claim.sourceLocation,
+							src.Name,
+							currentLocation,
+						))
+					}
+					continue
+				}
+
+				claims[resourceRef] = sourceResourceClaim{
+					canonicalSourceID: currentSourceID,
+					sourceName:        src.Name,
+					sourceLocation:    currentLocation,
+				}
+			}
+		}
+	}
+
+	if len(conflicts) == 0 {
+		return nil
+	}
+
+	sort.Strings(conflicts)
+	return fmt.Errorf("sync rejected: conflicting resource names across different sources:\n  - %s\nResolve by renaming one resource, narrowing include filters, or removing one of the conflicting sources", strings.Join(conflicts, "\n  - "))
+}
+
 func prepareRemoteSourcePath(wsMgr workspaceManager, cloneURL string, ref string) (string, error) {
 	sourcePath, err := wsMgr.GetOrClone(cloneURL, ref)
 	if err != nil {
@@ -353,7 +532,11 @@ func prepareRemoteSourcePath(wsMgr workspaceManager, cloneURL string, ref string
 // Returns the resolved source path (for use in post-sync scanning), the bulk result, and any error.
 // When syncSilentMode is true, "Mode: Remote/Local" lines are suppressed.
 func syncSource(src *repomanifest.Source, manager *repo.Manager) (string, *output.BulkOperationResult, error) {
-	var sourcePath string
+	sourcePath, err := resolveSourcePathForSync(src, manager)
+	if err != nil {
+		return "", nil, err
+	}
+
 	var mode string
 
 	if src.URL != "" {
@@ -362,61 +545,12 @@ func syncSource(src *repomanifest.Source, manager *repo.Manager) (string, *outpu
 			fmt.Printf("  Mode: Remote (download + copy)\n")
 		}
 		mode = "copy"
-
-		// Get repository path
-		repoPath := manager.GetRepoPath()
-
-		// Create workspace manager
-		wsMgr, err := workspace.NewManager(repoPath)
-		if err != nil {
-			return "", nil, fmt.Errorf("failed to create workspace manager: %w", err)
-		}
-
-		// Parse source URL to get clone URL
-		// Note: We construct a pseudo-source string for parsing
-		sourceStr := src.URL
-		if src.Ref != "" {
-			sourceStr = sourceStr + "@" + src.Ref
-		}
-		if src.Subpath != "" {
-			sourceStr = sourceStr + "/" + src.Subpath
-		}
-
-		parsed, err := source.ParseSource(sourceStr)
-		if err != nil {
-			return "", nil, fmt.Errorf("invalid source URL: %w", err)
-		}
-
-		// Get clone URL
-		cloneURL, err := source.GetCloneURL(parsed)
-		if err != nil {
-			return "", nil, fmt.Errorf("failed to get clone URL: %w", err)
-		}
-
-		// Get or clone repository, then refresh it before importing.
-		sourcePath, err = prepareRemoteSourcePath(wsMgr, cloneURL, src.Ref)
-		if err != nil {
-			return "", nil, err
-		}
-
-		// Apply subpath if specified
-		if src.Subpath != "" {
-			sourcePath = filepath.Join(sourcePath, src.Subpath)
-		}
-
 	} else if src.Path != "" {
 		// Local source (path): use path directly, symlink to repo
 		if !syncSilentMode {
 			fmt.Printf("  Mode: Local (symlink)\n")
 		}
 		mode = src.GetMode() // Use mode from source (implicit: path=symlink, url=copy)
-
-		// Convert to absolute path
-		absPath, err := filepath.Abs(src.Path)
-		if err != nil {
-			return "", nil, fmt.Errorf("invalid path %s: %w", src.Path, err)
-		}
-		sourcePath = absPath
 	} else {
 		return "", nil, fmt.Errorf("source must have either URL or Path")
 	}
@@ -727,6 +861,10 @@ func runSync(cmd *cobra.Command, args []string) error {
 	manifest, err := repomanifest.LoadForMutation(manager.GetRepoPath())
 	if err != nil {
 		return fmt.Errorf("failed to load manifest: %w", err)
+	}
+
+	if err := detectSyncResourceCollisions(manifest, manager); err != nil {
+		return err
 	}
 
 	// Check if any sources configured

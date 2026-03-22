@@ -12,6 +12,7 @@ Compact overview of the main aimgr concepts from a user perspective.
 - What aimgr does
 - `ai.repo.yaml` for sources and syncing
 - `ai.package.yaml` for project dependencies
+- optional `ai.package.local.yaml` for private project-local overlays
 - How repository and project manifests work together
 
 ### [Getting Started](getting-started.md)
@@ -22,6 +23,7 @@ Compact overview of the main aimgr concepts from a user perspective.
 - Installation on Linux, macOS, and Windows
 - Configuring your AI tool targets
 - Adding sources with `repo add`
+- Team-manifest bootstrap with `repo apply-manifest` + `repo sync` + `install`
 - Installing resources into projects
 - Common operations and workflows
 - Troubleshooting tips
@@ -42,7 +44,8 @@ Complete guide to configuring aimgr, including repository path, installation tar
 Reconcile owned resource directories with `ai.package.yaml`, clean project resource folders safely, and migrate from deprecated workflows.
 
 **Key Topics:**
-- `aimgr repair` — reconcile owned directories to `ai.package.yaml`
+- `aimgr repair` — reconcile owned directories to the effective project manifest
+  (`ai.package.yaml` + optional `ai.package.local.yaml`)
 - `aimgr clean` — empty owned resource directories
 - `--prune-package` — clean invalid references from `ai.package.yaml` (manifest cleanup)
 - `--dry-run` — preview reconcile actions safely
@@ -58,8 +61,22 @@ Managing remote and local resource sources using `ai.repo.yaml`.
 - `ai.repo.yaml` manifest format
 - Adding GitHub repositories (`gh:owner/repo`)
 - Adding local paths (symlinked)
+- Shared team-manifest publishing/consumption model
+- URL bootstrap guidance (including pinned/tagged GitHub raw URLs)
 - Syncing resources with `repo sync`
 - Development workflows
+
+### [Team and Multi-Project Workflows](team-workflows.md)
+
+Practical patterns for using aimgr in larger team setups and across many projects.
+
+**Key Topics:**
+- Central shared-manifest workflow as the default team model
+- Team bootstrap flow for developers and CI: `repo apply-manifest` + `repo sync` + `install`
+- Canonical naming and collision troubleshooting guidance
+- Project-local resource repositories
+- Personal extras vs committed project dependencies
+- Multi-project workflows with one local aimgr repository
 
 ## Quick Start
 

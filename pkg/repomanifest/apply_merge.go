@@ -106,11 +106,53 @@ func MergeForApply(current, incoming *Manifest, opts ApplyMergeOptions) (*Manife
 
 	merged := cloneManifest(current)
 	report := &ApplyMergeReport{Changes: make([]ApplyChange, 0, len(incoming.Sources))}
+	byName := make(map[string]*Source, len(merged.Sources))
+	byCanonicalID := make(map[string]*Source, len(merged.Sources))
+
+	for _, src := range merged.Sources {
+		if src == nil {
+			continue
+		}
+
+		byName[src.Name] = src
+
+		canonicalID := canonicalSourceIdentity(src)
+		if canonicalID == "" {
+			continue
+		}
+
+		if existing, ok := byCanonicalID[canonicalID]; ok && existing.Name != src.Name {
+			return nil, nil, fmt.Errorf("current manifest invalid: canonical source collision between %q and %q (%s)", existing.Name, src.Name, describeSourceLocation(src))
+		}
+
+		byCanonicalID[canonicalID] = src
+	}
 
 	for _, in := range incoming.Sources {
-		existing, found := merged.GetSource(in.Name)
-		if !found {
+		incomingCanonicalID := canonicalSourceIdentity(in)
+
+		existingByName, foundByName := byName[in.Name]
+		if !foundByName {
+			if existingByCanonicalID, exists := byCanonicalID[incomingCanonicalID]; exists {
+				report.Changes = append(report.Changes, ApplyChange{
+					Name:   in.Name,
+					Action: ApplyActionConflict,
+					Message: fmt.Sprintf(
+						"source %q has same canonical location as existing source %q (%s); use one canonical source name for this upstream",
+						in.Name,
+						existingByCanonicalID.Name,
+						describeSourceLocation(existingByCanonicalID),
+					),
+				})
+				continue
+			}
+
 			merged.Sources = append(merged.Sources, cloneSource(in))
+			added := merged.Sources[len(merged.Sources)-1]
+			byName[added.Name] = added
+			if canonicalID := canonicalSourceIdentity(added); canonicalID != "" {
+				byCanonicalID[canonicalID] = added
+			}
 			report.Changes = append(report.Changes, ApplyChange{
 				Name:    in.Name,
 				Action:  ApplyActionAdd,
@@ -119,16 +161,36 @@ func MergeForApply(current, incoming *Manifest, opts ApplyMergeOptions) (*Manife
 			continue
 		}
 
-		if !sameCanonicalLocation(existing, in) {
+		if canonicalSourceIdentity(existingByName) != incomingCanonicalID {
 			report.Changes = append(report.Changes, ApplyChange{
-				Name:    in.Name,
-				Action:  ApplyActionConflict,
-				Message: "source name already exists with different location",
+				Name:   in.Name,
+				Action: ApplyActionConflict,
+				Message: fmt.Sprintf(
+					"source %q already exists at %s but incoming manifest uses %s; keep source names stable for canonical locations",
+					in.Name,
+					describeSourceLocation(existingByName),
+					describeSourceLocation(in),
+				),
 			})
 			continue
 		}
 
-		if equalStringSlices(existing.Include, in.Include) {
+		refUpdated := false
+		if existingByName.Ref != in.Ref {
+			existingByName.Ref = in.Ref
+			refUpdated = true
+		}
+
+		if equalStringSlices(existingByName.Include, in.Include) {
+			if refUpdated {
+				report.Changes = append(report.Changes, ApplyChange{
+					Name:    in.Name,
+					Action:  ApplyActionUpdate,
+					Message: "updated source ref",
+				})
+				continue
+			}
+
 			report.Changes = append(report.Changes, ApplyChange{
 				Name:    in.Name,
 				Action:  ApplyActionNoOp,
@@ -138,6 +200,15 @@ func MergeForApply(current, incoming *Manifest, opts ApplyMergeOptions) (*Manife
 		}
 
 		if mode == IncludeMergePreserve {
+			if refUpdated {
+				report.Changes = append(report.Changes, ApplyChange{
+					Name:    in.Name,
+					Action:  ApplyActionUpdate,
+					Message: "updated source ref; kept existing include filters (preserve mode)",
+				})
+				continue
+			}
+
 			report.Changes = append(report.Changes, ApplyChange{
 				Name:    in.Name,
 				Action:  ApplyActionNoOp,
@@ -146,7 +217,16 @@ func MergeForApply(current, incoming *Manifest, opts ApplyMergeOptions) (*Manife
 			continue
 		}
 
-		existing.Include = copyStringSlice(in.Include)
+		existingByName.Include = copyStringSlice(in.Include)
+		if refUpdated {
+			report.Changes = append(report.Changes, ApplyChange{
+				Name:    in.Name,
+				Action:  ApplyActionUpdate,
+				Message: "updated source ref and replaced include filters",
+			})
+			continue
+		}
+
 		report.Changes = append(report.Changes, ApplyChange{
 			Name:    in.Name,
 			Action:  ApplyActionUpdate,
@@ -159,6 +239,43 @@ func MergeForApply(current, incoming *Manifest, opts ApplyMergeOptions) (*Manife
 	}
 
 	return merged, report, nil
+}
+
+func canonicalSourceIdentity(source *Source) string {
+	if source == nil {
+		return ""
+	}
+
+	if source.ID != "" {
+		return source.ID
+	}
+
+	return GenerateSourceID(source)
+}
+
+func describeSourceLocation(source *Source) string {
+	if source == nil {
+		return "unknown location"
+	}
+
+	if source.URL != "" {
+		if source.Ref != "" {
+			if source.Subpath != "" {
+				return fmt.Sprintf("url %q (ref %q, subpath %q)", source.URL, source.Ref, source.Subpath)
+			}
+			return fmt.Sprintf("url %q (ref %q)", source.URL, source.Ref)
+		}
+		if source.Subpath != "" {
+			return fmt.Sprintf("url %q (subpath %q)", source.URL, source.Subpath)
+		}
+		return fmt.Sprintf("url %q", source.URL)
+	}
+
+	if source.Path != "" {
+		return fmt.Sprintf("path %q", source.Path)
+	}
+
+	return "unknown location"
 }
 
 func cloneManifest(m *Manifest) *Manifest {
@@ -188,14 +305,6 @@ func cloneSource(s *Source) *Source {
 		Subpath: s.Subpath,
 		Include: copyStringSlice(s.Include),
 	}
-}
-
-func sameCanonicalLocation(a, b *Source) bool {
-	if a == nil || b == nil {
-		return false
-	}
-
-	return a.Path == b.Path && a.URL == b.URL && a.Ref == b.Ref && a.Subpath == b.Subpath
 }
 
 func equalStringSlices(a, b []string) bool {

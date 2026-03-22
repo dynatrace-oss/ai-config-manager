@@ -77,25 +77,18 @@ func DetectInstallTargets(projectPath string, defaultTools []tools.Tool) ([]tool
 		return existingTools, nil
 	}
 
-	// Check for ai.package.yaml manifest
-	manifestPath := filepath.Join(projectPath, manifest.ManifestFileName)
-	if manifest.Exists(manifestPath) {
-		m, err := manifest.Load(manifestPath)
-		if err != nil {
-			// If manifest exists but can't be loaded, continue with defaults
-			// (Don't fail the install operation due to manifest errors)
-		} else if len(m.Install.Targets) > 0 {
-			// Use manifest targets (overrides global config)
-			manifestTargets := make([]tools.Tool, 0, len(m.Install.Targets))
-			for _, targetStr := range m.Install.Targets {
-				tool, err := tools.ParseTool(targetStr)
-				if err != nil {
-					return nil, fmt.Errorf("invalid install.targets in manifest '%s': %w", targetStr, err)
-				}
-				manifestTargets = append(manifestTargets, tool)
+	// Check project manifest targets (ai.package.yaml + optional ai.package.local.yaml)
+	projectManifests, err := manifest.LoadProjectManifests(projectPath)
+	if err == nil && projectManifests != nil && projectManifests.Effective != nil && len(projectManifests.Effective.Install.Targets) > 0 {
+		manifestTargets := make([]tools.Tool, 0, len(projectManifests.Effective.Install.Targets))
+		for _, targetStr := range projectManifests.Effective.Install.Targets {
+			tool, err := tools.ParseTool(targetStr)
+			if err != nil {
+				return nil, fmt.Errorf("invalid install.targets in manifest '%s': %w", targetStr, err)
 			}
-			return manifestTargets, nil
+			manifestTargets = append(manifestTargets, tool)
 		}
+		return manifestTargets, nil
 	}
 
 	// Fall back to global config defaults

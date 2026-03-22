@@ -25,9 +25,15 @@ func TestRepoApplyCommandHelpText(t *testing.T) {
 		"repo init",
 		"repo show-manifest",
 		"repo apply-manifest <path-or-url>",
+		"Apply is additive",
+		"repo drop-source",
 		"aimgr repo apply-manifest ./ai.repo.yaml",
 		"aimgr repo apply-manifest -",
 		"https://example.com/platform/ai.repo.yaml",
+		"raw.githubusercontent.com/example/platform-configs/v1.2.0/manifests/ai.repo.yaml",
+		"/blob/<ref>/",
+		"aimgr repo sync",
+		"aimgr install",
 		"--include-mode preserve",
 	} {
 		if !strings.Contains(help, expected) {
@@ -187,6 +193,45 @@ sources:
 	}
 }
 
+func TestRepoApply_ReapplyUpdatesSourceRef(t *testing.T) {
+	repoDir := t.TempDir()
+	t.Setenv("AIMGR_REPO_PATH", repoDir)
+
+	baseline := &repomanifest.Manifest{Version: 1, Sources: []*repomanifest.Source{{
+		Name: "team-tools",
+		URL:  "https://github.com/example/tools",
+		Ref:  "v1.2.0",
+	}}}
+	if err := baseline.Save(repoDir); err != nil {
+		t.Fatalf("failed to save baseline manifest: %v", err)
+	}
+
+	incomingPath := filepath.Join(t.TempDir(), repomanifest.ManifestFileName)
+	incoming := `version: 1
+sources:
+  - name: team-tools
+    url: https://github.com/example/tools
+    ref: v1.3.0
+`
+	if err := os.WriteFile(incomingPath, []byte(incoming), 0644); err != nil {
+		t.Fatalf("failed to write incoming manifest: %v", err)
+	}
+
+	withApplyFlags(false, string(repomanifest.IncludeMergeReplace), func() {
+		if err := runApplyManifest(repoApplyManifestCmd, []string{incomingPath}); err != nil {
+			t.Fatalf("apply-manifest failed: %v", err)
+		}
+	})
+
+	after, err := repomanifest.Load(repoDir)
+	if err != nil {
+		t.Fatalf("failed to load manifest after apply: %v", err)
+	}
+	if got := after.Sources[0].Ref; got != "v1.3.0" {
+		t.Fatalf("expected ref to be updated to v1.3.0, got %q", got)
+	}
+}
+
 func TestRepoApply_ConflictDoesNotOverwrite(t *testing.T) {
 	repoDir := t.TempDir()
 	t.Setenv("AIMGR_REPO_PATH", repoDir)
@@ -282,6 +327,49 @@ sources:
 	}
 	if len(after.Sources) != 3 {
 		t.Fatalf("dry-run should not persist changes, expected 3 sources got %d", len(after.Sources))
+	}
+}
+
+func TestRepoApply_RejectsCanonicalSourceCollisionAndPreservesManifest(t *testing.T) {
+	repoDir := t.TempDir()
+	t.Setenv("AIMGR_REPO_PATH", repoDir)
+
+	baseline := &repomanifest.Manifest{Version: 1, Sources: []*repomanifest.Source{{
+		Name: "team-tools",
+		URL:  "https://github.com/example/tools.git/",
+	}}}
+	if err := baseline.Save(repoDir); err != nil {
+		t.Fatalf("failed to save baseline manifest: %v", err)
+	}
+
+	incomingPath := filepath.Join(t.TempDir(), repomanifest.ManifestFileName)
+	incoming := `version: 1
+sources:
+  - name: platform-tools
+    url: https://github.com/EXAMPLE/tools
+`
+	if err := os.WriteFile(incomingPath, []byte(incoming), 0644); err != nil {
+		t.Fatalf("failed to write incoming manifest: %v", err)
+	}
+
+	withApplyFlags(false, string(repomanifest.IncludeMergeReplace), func() {
+		err := runApplyManifest(repoApplyManifestCmd, []string{incomingPath})
+		if err == nil {
+			t.Fatal("expected canonical source collision error, got nil")
+		}
+		for _, expected := range []string{"platform-tools", "team-tools", "same canonical location", "resolve conflicts"} {
+			if !strings.Contains(err.Error(), expected) {
+				t.Fatalf("expected error to contain %q, got: %v", expected, err)
+			}
+		}
+	})
+
+	after, err := repomanifest.Load(repoDir)
+	if err != nil {
+		t.Fatalf("failed to load manifest after failed apply: %v", err)
+	}
+	if len(after.Sources) != 1 || after.Sources[0].Name != "team-tools" {
+		t.Fatalf("failed apply must keep manifest valid and unchanged, got %+v", after.Sources)
 	}
 }
 

@@ -192,12 +192,59 @@ func TestRepairFindInvalidManifestRefs(t *testing.T) {
 		t.Fatalf("Failed to init repo: %v", err)
 	}
 
-	m := &manifest.Manifest{Resources: []string{"skill/missing-skill", "package/missing-pkg"}}
-	invalidRefs, partial := findInvalidManifestRefs(m, manager)
+	view := &manifest.ProjectManifests{
+		Base:  &manifest.Manifest{Resources: []string{"skill/missing-skill"}},
+		Local: &manifest.Manifest{Resources: []string{"package/missing-pkg"}},
+	}
+	invalidRefs, partial := findInvalidManifestRefs(view, manager)
 	if len(invalidRefs) != 2 {
 		t.Fatalf("expected 2 invalid refs, got %v", invalidRefs)
 	}
 	if len(partial) != 0 {
 		t.Fatalf("expected no partial package warnings, got %v", partial)
+	}
+}
+
+func TestApplyManifestPruneActions_RemovesFromAllDeclaringFiles(t *testing.T) {
+	projectDir := t.TempDir()
+	basePath := filepath.Join(projectDir, manifest.ManifestFileName)
+	localPath := filepath.Join(projectDir, manifest.LocalManifestFileName)
+
+	base := &manifest.Manifest{Resources: []string{"skill/shared", "skill/base-only"}}
+	local := &manifest.Manifest{Resources: []string{"skill/shared", "skill/local-only"}}
+	if err := base.Save(basePath); err != nil {
+		t.Fatalf("save base: %v", err)
+	}
+	if err := local.Save(localPath); err != nil {
+		t.Fatalf("save local: %v", err)
+	}
+
+	view := &manifest.ProjectManifests{BasePath: basePath, LocalPath: localPath, Base: base, Local: local}
+	result := &RepairResult{
+		Planned: RepairPlan{PrunePackage: []RepairAction{{Resource: "skill/shared", IssueType: "prune-package"}}},
+		Applied: RepairPlan{PrunePackage: []RepairAction{}},
+		Failed:  []RepairErr{},
+	}
+
+	applyManifestPruneActions(view, result)
+
+	if len(result.Failed) != 0 {
+		t.Fatalf("expected no failures, got %+v", result.Failed)
+	}
+	if len(result.Applied.PrunePackage) != 1 {
+		t.Fatalf("expected one applied prune action, got %+v", result.Applied.PrunePackage)
+	}
+
+	baseAfter, err := manifest.Load(basePath)
+	if err != nil {
+		t.Fatalf("load base after prune: %v", err)
+	}
+	localAfter, err := manifest.Load(localPath)
+	if err != nil {
+		t.Fatalf("load local after prune: %v", err)
+	}
+
+	if baseAfter.Has("skill/shared") || localAfter.Has("skill/shared") {
+		t.Fatalf("expected skill/shared removed from both manifests; base=%v local=%v", baseAfter.Resources, localAfter.Resources)
 	}
 }

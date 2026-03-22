@@ -1,6 +1,7 @@
 # Repairing Resources
 
-`aimgr repair` reconciles your project's **owned resource directories** with `ai.package.yaml`.
+`aimgr repair` reconciles your project's **owned resource directories** with the
+effective project manifest (`ai.package.yaml` plus optional `ai.package.local.yaml`).
 It is the replacement for the deprecated `verify --fix` workflow.
 
 Owned resource directories are tool-specific `commands/`, `skills/`, and `agents/` folders
@@ -14,7 +15,7 @@ Owned resource directories are tool-specific `commands/`, `skills/`, and `agents
 # Diagnose drift (read-only)
 aimgr verify
 
-# Reconcile owned directories to ai.package.yaml
+# Reconcile owned directories to the effective manifest view
 aimgr repair
 ```
 
@@ -25,11 +26,12 @@ aimgr repair
 The project model is now:
 
 - `aimgr clean` empties owned resource directories (without editing `ai.package.yaml`)
-- `aimgr repair` restores/reconciles those directories to match `ai.package.yaml`
+- `aimgr repair` restores/reconciles those directories to match the effective manifest view
+  (`ai.package.yaml` + optional `ai.package.local.yaml` overlay)
 
 `repair` performs reconciliation in this order:
 
-1. Validate and load `ai.package.yaml`
+1. Validate and load project manifest data (committed + optional local overlay)
 2. Expand `package/*` entries to concrete resources
 3. Install/fix declared resources first
 4. Remove remaining undeclared content from owned directories
@@ -37,11 +39,15 @@ The project model is now:
 
 This keeps recovery safer: declared resources are restored before undeclared content is removed.
 
+If the local overlay references resources whose sources are unavailable in your local
+repository, `repair` reports those failures explicitly rather than silently ignoring them.
+
 ---
 
 ## What `repair` Does
 
-With a valid `ai.package.yaml`, `aimgr repair`:
+With a valid effective project manifest (`ai.package.yaml` + optional
+`ai.package.local.yaml`), `aimgr repair`:
 
 | Category | What It Does |
 |---|---|
@@ -52,9 +58,9 @@ With a valid `ai.package.yaml`, `aimgr repair`:
 
 ### Important: Manual Deletion Is Not Permanent
 
-If a resource is still declared in `ai.package.yaml`, `aimgr repair` will reinstall it.
+If a resource is still declared in the effective project manifest, `aimgr repair` will reinstall it.
 
-To remove a resource permanently, update `ai.package.yaml` (for example, use
+To remove a resource permanently, update the manifest that declares it (for example, use
 `aimgr uninstall <resource>` **without** `--no-save`).
 
 ---
@@ -113,7 +119,7 @@ aimgr clean && aimgr repair
 ```
 
 Use this when you want a deterministic reset of owned resource directories,
-then restore exactly what `ai.package.yaml` declares.
+then restore exactly what the effective manifest view declares.
 
 ---
 
@@ -206,5 +212,7 @@ aimgr repair --format json --dry-run
 ## See Also
 
 - **[Getting Started](getting-started.md)** — Installation and basic usage
+- **[Concepts](concepts.md)** — `ai.package.yaml` and `ai.package.local.yaml` roles and merge behavior
+- **[Team and Multi-Project Workflows](team-workflows.md)** — shared baseline + local overlay workflows
 - **[Output Formats](../reference/output-formats.md)** — JSON output for scripting
 - **[Troubleshooting](../reference/troubleshooting.md)** — Common issues and solutions

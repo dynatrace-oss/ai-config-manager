@@ -960,3 +960,126 @@ func TestUpdateManifestFromResults_SkipWhenSaveDisabled(t *testing.T) {
 		t.Fatalf("expected no manifest file when save disabled, stat err: %v", statErr)
 	}
 }
+
+func TestInstallFromManifest_UsesLocalOverlayResources(t *testing.T) {
+	repoPath := t.TempDir()
+	projectPath := t.TempDir()
+
+	manager := repo.NewManagerWithPath(repoPath)
+	if err := manager.Init(); err != nil {
+		t.Fatalf("init repo: %v", err)
+	}
+
+	// Create repo skills used by base and local overlay manifests.
+	for _, skillName := range []string{"shared-skill", "local-skill"} {
+		skillDir := filepath.Join(repoPath, "tmp", skillName)
+		if err := os.MkdirAll(skillDir, 0755); err != nil {
+			t.Fatalf("mkdir skill %s: %v", skillName, err)
+		}
+		if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\ndescription: test\n---\n"), 0644); err != nil {
+			t.Fatalf("write SKILL.md for %s: %v", skillName, err)
+		}
+		if err := manager.AddSkill(skillDir, "file://"+skillDir, "file"); err != nil {
+			t.Fatalf("add skill %s: %v", skillName, err)
+		}
+	}
+
+	basePath := filepath.Join(projectPath, manifest.ManifestFileName)
+	localPath := filepath.Join(projectPath, manifest.LocalManifestFileName)
+
+	baseContent := `resources:
+  - skill/shared-skill
+`
+	localContent := `resources:
+  - skill/local-skill
+install:
+  targets:
+    - claude
+`
+
+	if err := os.WriteFile(basePath, []byte(baseContent), 0644); err != nil {
+		t.Fatalf("write base manifest: %v", err)
+	}
+	if err := os.WriteFile(localPath, []byte(localContent), 0644); err != nil {
+		t.Fatalf("write local manifest: %v", err)
+	}
+
+	oldRepoEnv := os.Getenv("AIMGR_REPO_PATH")
+	oldProjectPathFlag := projectPathFlag
+	oldInstallTargetFlag := installTargetFlag
+	t.Cleanup(func() {
+		projectPathFlag = oldProjectPathFlag
+		installTargetFlag = oldInstallTargetFlag
+		if oldRepoEnv != "" {
+			_ = os.Setenv("AIMGR_REPO_PATH", oldRepoEnv)
+		} else {
+			_ = os.Unsetenv("AIMGR_REPO_PATH")
+		}
+	})
+
+	projectPathFlag = projectPath
+	installTargetFlag = ""
+	_ = os.Setenv("AIMGR_REPO_PATH", repoPath)
+
+	if err := installFromManifest(); err != nil {
+		t.Fatalf("installFromManifest() failed: %v", err)
+	}
+
+	for _, skillName := range []string{"shared-skill", "local-skill"} {
+		symlinkPath := filepath.Join(projectPath, ".claude", "skills", skillName)
+		if _, err := os.Lstat(symlinkPath); err != nil {
+			t.Fatalf("expected installed symlink for %s at %s: %v", skillName, symlinkPath, err)
+		}
+	}
+}
+
+func TestInstallFromManifest_LocalOverlayMissingResourceFails(t *testing.T) {
+	repoPath := t.TempDir()
+	projectPath := t.TempDir()
+
+	manager := repo.NewManagerWithPath(repoPath)
+	if err := manager.Init(); err != nil {
+		t.Fatalf("init repo: %v", err)
+	}
+
+	// Add only base skill; local overlay references a missing one.
+	baseSkillDir := filepath.Join(repoPath, "tmp", "base-skill")
+	if err := os.MkdirAll(baseSkillDir, 0755); err != nil {
+		t.Fatalf("mkdir base skill: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(baseSkillDir, "SKILL.md"), []byte("---\ndescription: base\n---\n"), 0644); err != nil {
+		t.Fatalf("write base SKILL.md: %v", err)
+	}
+	if err := manager.AddSkill(baseSkillDir, "file://"+baseSkillDir, "file"); err != nil {
+		t.Fatalf("add base skill: %v", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(projectPath, manifest.ManifestFileName), []byte("resources:\n  - skill/base-skill\n"), 0644); err != nil {
+		t.Fatalf("write base manifest: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(projectPath, manifest.LocalManifestFileName), []byte("resources:\n  - skill/missing-local\n"), 0644); err != nil {
+		t.Fatalf("write local manifest: %v", err)
+	}
+
+	oldRepoEnv := os.Getenv("AIMGR_REPO_PATH")
+	oldProjectPathFlag := projectPathFlag
+	t.Cleanup(func() {
+		projectPathFlag = oldProjectPathFlag
+		if oldRepoEnv != "" {
+			_ = os.Setenv("AIMGR_REPO_PATH", oldRepoEnv)
+		} else {
+			_ = os.Unsetenv("AIMGR_REPO_PATH")
+		}
+	})
+
+	projectPathFlag = projectPath
+	_ = os.Setenv("AIMGR_REPO_PATH", repoPath)
+
+	err := installFromManifest()
+	if err == nil {
+		t.Fatalf("installFromManifest() expected error for missing overlay resource, got nil")
+	}
+	if !strings.Contains(err.Error(), "some resources failed to install") {
+		t.Fatalf("installFromManifest() error = %v, want missing-resource install failure", err)
+	}
+}

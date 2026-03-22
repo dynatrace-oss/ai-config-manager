@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/manifest"
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/pattern"
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/resource"
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/tools"
@@ -493,5 +494,24 @@ func TestIsInstalledInTool_BrokenSymlinkDetected(t *testing.T) {
 	// isInstalledInTool uses Lstat, so broken symlinks are still detected as "installed"
 	if !isInstalledInTool(tmpDir, "broken-skill", resource.Skill, tools.OpenCode) {
 		t.Error("expected broken symlink to be detected as installed (Lstat detects it)")
+	}
+}
+
+func TestExpandManifestResources_UsesLocalOverlay(t *testing.T) {
+	projectDir := t.TempDir()
+
+	if err := os.WriteFile(filepath.Join(projectDir, manifest.ManifestFileName), []byte("resources:\n  - skill/base-only\n"), 0644); err != nil {
+		t.Fatalf("write base manifest: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, manifest.LocalManifestFileName), []byte("resources:\n  - skill/local-only\n"), 0644); err != nil {
+		t.Fatalf("write local manifest: %v", err)
+	}
+
+	expanded := expandManifestResources(projectDir)
+	if expanded == nil {
+		t.Fatalf("expected expanded manifest set, got nil")
+	}
+	if !expanded["skill/base-only"] || !expanded["skill/local-only"] {
+		t.Fatalf("expected both base and local resources in expanded set, got %v", expanded)
 	}
 }

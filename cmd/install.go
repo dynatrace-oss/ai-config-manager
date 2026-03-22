@@ -276,17 +276,19 @@ func installFromManifest() error {
 		return fmt.Errorf("failed to create repository manager: %w", err)
 	}
 
-	// Look for ai.package.yaml
-	manifestPath := filepath.Join(projectPath, manifest.ManifestFileName)
-	if !manifest.Exists(manifestPath) {
-		return fmt.Errorf("no resources specified and %s not found\n\nTo install resources, either:\n  1. Specify resources: aimgr install skill/pdf-processing\n  2. Create %s in current directory", manifest.ManifestFileName, manifest.ManifestFileName)
+	// Load effective project manifest (base + optional local overlay)
+	m, view, err := loadEffectiveProjectManifest(projectPath)
+	if err != nil {
+		return err
+	}
+	if m == nil {
+		return fmt.Errorf("no resources specified and neither %s nor %s found\n\nTo install resources, either:\n  1. Specify resources: aimgr install skill/pdf-processing\n  2. Create %s in current directory", manifest.ManifestFileName, manifest.LocalManifestFileName, manifest.ManifestFileName)
 	}
 
-	// Load manifest
-	fmt.Printf("Reading %s...\n", manifest.ManifestFileName)
-	m, err := manifest.Load(manifestPath)
-	if err != nil {
-		return fmt.Errorf("failed to load manifest: %w", err)
+	if view.Local != nil {
+		fmt.Printf("Reading %s + %s...\n", manifest.ManifestFileName, manifest.LocalManifestFileName)
+	} else {
+		fmt.Printf("Reading %s...\n", manifest.ManifestFileName)
 	}
 
 	// Check if manifest has any resources

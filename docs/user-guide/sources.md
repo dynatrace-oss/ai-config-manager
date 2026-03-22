@@ -181,12 +181,12 @@ Use `aimgr repo apply-manifest <path-or-url>` to import a shared `ai.repo.yaml` 
 - `aimgr repo apply-manifest <path-or-url>`: load a shared manifest and merge its sources into local `ai.repo.yaml` (auto-initializes if needed)
 - Deferred for future versions: export/lockfile workflows (not part of `repo apply-manifest` v1)
 
-### Collaboration model
+### Collaboration model (team baseline)
 
 The intended sharing model is:
 
-1. One team or person publishes an `ai.repo.yaml` somewhere central.
-2. Other users run `aimgr repo apply-manifest <path-or-url>` against that file.
+1. A team agrees on shared sources for a project and publishes them as one central `ai.repo.yaml`.
+2. Developers and CI run `aimgr repo apply-manifest <path-or-url>` against that shared file.
 3. Users can apply more than one shared manifest; each apply merges additional sources into the same local `ai.repo.yaml`.
 4. If a user wants to share their own current setup, they run `aimgr repo show-manifest` and commit or upload that output somewhere others can access it.
 
@@ -194,7 +194,7 @@ Example:
 
 ```bash
 # import team baseline
-aimgr repo apply-manifest https://example.com/platform/ai.repo.yaml
+aimgr repo apply-manifest https://example.com/team/project-a/ai.repo.yaml
 
 # add another shared manifest on top
 aimgr repo apply-manifest https://example.com/data-science/ai.repo.yaml
@@ -210,6 +210,21 @@ aimgr repo show-manifest > ai.repo.yaml
 1. Local file path to `ai.repo.yaml`
 2. HTTP(S) URL pointing directly to `ai.repo.yaml`
 3. Stdin via `-` or `/dev/stdin` (convenience input, not the primary sharing model)
+
+For team/shared manifests on GitHub, use a raw file URL when pinning to a tag/ref.
+Example:
+
+```bash
+aimgr repo apply-manifest https://raw.githubusercontent.com/my-org/platform-configs/v1.2.0/manifests/ai.repo.yaml
+```
+
+Branch-based raw file URLs are also valid, but tags/releases are recommended for reproducibility:
+
+```bash
+aimgr repo apply-manifest https://raw.githubusercontent.com/my-org/platform-configs/main/manifests/ai.repo.yaml
+```
+
+GitHub web page URLs such as `/blob/<ref>/.../ai.repo.yaml` and `/tree/<ref>/.../ai.repo.yaml` are not valid `repo apply-manifest` inputs because they do not represent a direct manifest file endpoint.
 
 Examples:
 
@@ -233,6 +248,15 @@ Fresh repository bootstrap from a shared manifest:
 # No prior repo init required
 aimgr repo apply-manifest ./ai.repo.yaml
 aimgr repo sync
+aimgr install
+```
+
+Recommended team baseline flow (local and CI):
+
+```bash
+aimgr repo apply-manifest <shared-manifest-url>
+aimgr repo sync
+aimgr install
 ```
 
 Merge into an existing repository with local sources:
@@ -248,6 +272,24 @@ In merge mode:
 - Identical sources become no-ops (idempotent)
 - `include` filters are replaced by default for same-location updates (`--include-mode replace`)
 - Use `--include-mode preserve` to keep existing local include filters
+
+Important for re-apply workflows:
+- `repo apply-manifest` is **additive**. Re-applying an updated shared manifest does not remove local sources that are missing from the new incoming file.
+- If a shared source is intentionally removed upstream, remove stale local entries explicitly with `aimgr repo drop-source <name|path|url>`.
+
+Example stale-source cleanup after a shared manifest update:
+
+```bash
+# Re-apply the updated shared manifest
+aimgr repo apply-manifest https://example.com/team/project-a/ai.repo.yaml
+
+# Remove a source that was intentionally dropped from the shared manifest
+aimgr repo drop-source source-a
+
+# Refresh resources and install
+aimgr repo sync
+aimgr install
+```
 
 Applying multiple manifests is also valid:
 
@@ -291,11 +333,20 @@ Rules:
 When applying a manifest onto the local `ai.repo.yaml` with `repo apply-manifest`:
 
 - **New source name** → add source
-- **Same source name + identical definition** (`path/url/ref/subpath/include`) → no-op (idempotent)
-- **Same source name + different definition** → conflict (must be explicit, no silent overwrite)
+- **Same source name + identical canonical source** (`path/url/subpath`) with updated `ref` → supported update (no conflict)
+- **Same source name + identical effective definition** → no-op (idempotent)
+- **Same source name + different canonical source location/identity** (for example different `path`, `url`, or `subpath`) → conflict (must be explicit, no silent overwrite)
 - **Duplicate names within the incoming manifest** → validation error
 
+Canonical resource collisions are also explicit failures: if different sources resolve to the same canonical resource ID (`type/name`), apply fails and reports the collision instead of silently choosing one.
+
 Repeated apply of the same manifest should be idempotent.
+
+Team guidance:
+
+- standardize source naming conventions (canonical source names)
+- ensure only one source owns each canonical resource name
+- use `include` filters to avoid overlapping canonical names between sources
 
 ### Relative path resolution
 

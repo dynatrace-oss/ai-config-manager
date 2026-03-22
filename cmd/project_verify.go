@@ -59,7 +59,7 @@ Examples:
 		}
 		detectedTools := toolsFromOwnedDirs(ownedDirs)
 
-		if len(ownedDirs) == 0 {
+		if len(ownedDirs) == 0 && !manifest.Exists(filepath.Join(projectPath, manifest.ManifestFileName)) && !manifest.Exists(filepath.Join(projectPath, manifest.LocalManifestFileName)) {
 			fmt.Println("No tool directories found in this project.")
 			return nil
 		}
@@ -323,24 +323,20 @@ func verifySymlink(symlinkPath, resourceName, tool, repoPath string) *VerifyIssu
 }
 
 func checkManifestSync(projectPath string, detectedTools []tools.Tool, repoPath string) ([]VerifyIssue, error) {
-	// Load manifest
-	manifestPath := filepath.Join(projectPath, manifest.ManifestFileName)
-
-	// Check if manifest exists before loading — manifest.Load wraps the
-	// os.IsNotExist error so os.IsNotExist() doesn't work on the result.
-	if _, err := os.Stat(manifestPath); os.IsNotExist(err) {
-		return nil, nil // No manifest, no sync issues
-	}
-
-	mf, err := manifest.Load(manifestPath)
+	mf, view, err := loadEffectiveProjectManifest(projectPath)
 	if err != nil {
 		return nil, err
+	}
+	if mf == nil {
+		return nil, nil // No project manifest files, no sync issues
 	}
 
 	var issues []VerifyIssue
 
 	// Phase 2a: Manifest → disk (check each resource in manifest is installed)
 	for _, resourceRef := range mf.Resources {
+		declManifestName, declManifestPath := declaringManifestForResource(view, resourceRef)
+
 		// Parse resource type and name
 		parts := strings.SplitN(resourceRef, "/", 2)
 		if len(parts) != 2 {
@@ -351,7 +347,7 @@ func checkManifestSync(projectPath string, detectedTools []tools.Tool, repoPath 
 
 		// Special handling for packages - check if all constituent resources are installed
 		if resType == "package" {
-			pkgIssues := checkPackageInstalled(resourceRef, resName, projectPath, manifestPath, detectedTools, repoPath)
+			pkgIssues := checkPackageInstalled(resourceRef, resName, projectPath, declManifestName, declManifestPath, detectedTools, repoPath)
 			issues = append(issues, pkgIssues...)
 			continue
 		}
@@ -362,8 +358,8 @@ func checkManifestSync(projectPath string, detectedTools []tools.Tool, repoPath 
 				Resource:    resourceRef,
 				Tool:        "any",
 				IssueType:   issueTypeNotInstalled,
-				Description: fmt.Sprintf("Listed in %s but not installed", manifest.ManifestFileName),
-				Path:        manifestPath,
+				Description: fmt.Sprintf("Listed in %s but not installed", declManifestName),
+				Path:        declManifestPath,
 				Severity:    "warning",
 			})
 		}
@@ -376,9 +372,36 @@ func checkManifestSync(projectPath string, detectedTools []tools.Tool, repoPath 
 	return issues, nil
 }
 
+// declaringManifestForResource returns the manifest filename/path where a
+// resource is declared in the project manifest view. Local-only declarations
+// are attributed to ai.package.local.yaml.
+func declaringManifestForResource(view *manifest.ProjectManifests, resourceRef string) (string, string) {
+	if view == nil {
+		return manifest.ManifestFileName, ""
+	}
+
+	inBase := view.Base != nil && view.Base.Has(resourceRef)
+	inLocal := view.Local != nil && view.Local.Has(resourceRef)
+
+	if inLocal && !inBase {
+		return manifest.LocalManifestFileName, view.LocalPath
+	}
+	if inBase {
+		return manifest.ManifestFileName, view.BasePath
+	}
+	if view.Base == nil && inLocal {
+		return manifest.LocalManifestFileName, view.LocalPath
+	}
+	if view.Base == nil && view.Local != nil {
+		return manifest.LocalManifestFileName, view.LocalPath
+	}
+
+	return manifest.ManifestFileName, view.BasePath
+}
+
 // checkPackageInstalled verifies all resources in a package are installed.
 // Returns issues for missing package definitions or uninstalled member resources.
-func checkPackageInstalled(resourceRef, resName, projectPath, manifestPath string, detectedTools []tools.Tool, repoPath string) []VerifyIssue {
+func checkPackageInstalled(resourceRef, resName, projectPath, manifestName, manifestPath string, detectedTools []tools.Tool, repoPath string) []VerifyIssue {
 	// Load package definition
 	packagePath := resource.GetPackagePath(resName, repoPath)
 	pkg, err := resource.LoadPackage(packagePath)
@@ -409,7 +432,7 @@ func checkPackageInstalled(resourceRef, resName, projectPath, manifestPath strin
 
 	if len(missingResources) > 0 {
 		desc := fmt.Sprintf("Listed in %s but %d resource(s) not installed: %s",
-			manifest.ManifestFileName, len(missingResources), strings.Join(missingResources, ", "))
+			manifestName, len(missingResources), strings.Join(missingResources, ", "))
 		return []VerifyIssue{{
 			Resource:    resourceRef,
 			Tool:        "any",
@@ -681,10 +704,12 @@ func runVerifyFixWrapper(projectPath string, manager *repo.Manager, parsedFormat
 		repairFormat = output.Table
 	}
 
-	manifestPath := filepath.Join(projectPath, manifest.ManifestFileName)
-	mf, err := manifest.Load(manifestPath)
+	mf, _, err := loadEffectiveProjectManifest(projectPath)
 	if err != nil {
-		return fmt.Errorf("failed to load %s: %w", manifest.ManifestFileName, err)
+		return err
+	}
+	if mf == nil {
+		return fmt.Errorf("failed to load project manifest: neither %s nor %s found", manifest.ManifestFileName, manifest.LocalManifestFileName)
 	}
 
 	expanded, expandErrs := expandManifestRefs(mf, manager.GetRepoPath())

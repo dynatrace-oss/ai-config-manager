@@ -153,6 +153,58 @@ func TestLoadForApply_RemoteManifest_RejectsNonFileURL(t *testing.T) {
 	}
 }
 
+func TestLoadForApply_RemoteManifest_RejectsGitHubBlobURLWithGuidance(t *testing.T) {
+	_, err := LoadForApply("https://github.com/org/repo/blob/v1.2.0/manifests/ai.repo.yaml")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	for _, expected := range []string{"/blob/", "raw.githubusercontent.com", "ai.repo.yaml"} {
+		if !strings.Contains(err.Error(), expected) {
+			t.Fatalf("expected error to contain %q, got: %v", expected, err)
+		}
+	}
+}
+
+func TestLoadForApply_RemoteManifest_RejectsGitHubTreeURLWithGuidance(t *testing.T) {
+	_, err := LoadForApply("https://github.com/org/repo/tree/v1.2.0/manifests/ai.repo.yaml")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	for _, expected := range []string{"/tree/", "raw.githubusercontent.com", "ai.repo.yaml"} {
+		if !strings.Contains(err.Error(), expected) {
+			t.Fatalf("expected error to contain %q, got: %v", expected, err)
+		}
+	}
+}
+
+func TestLoadForApply_RemoteManifest_AcceptsRawGitHubPinnedURL(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/org/repo/v1.2.0/manifests/ai.repo.yaml" {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write([]byte(`version: 1
+sources:
+  - name: pinned-source
+    url: https://github.com/example/tools
+    ref: v1.2.0
+`))
+	}))
+	defer server.Close()
+
+	rawURL := server.URL + "/org/repo/v1.2.0/manifests/ai.repo.yaml"
+	m, err := loadForApplyWithClient(rawURL, server.Client())
+	if err != nil {
+		t.Fatalf("loadForApplyWithClient() error = %v", err)
+	}
+	if len(m.Sources) != 1 {
+		t.Fatalf("expected 1 source, got %d", len(m.Sources))
+	}
+	if got := m.Sources[0].Ref; got != "v1.2.0" {
+		t.Fatalf("expected pinned ref v1.2.0, got %q", got)
+	}
+}
+
 func TestLoadForApply_RemoteManifest_InvalidYAML(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte("version: [bad"))

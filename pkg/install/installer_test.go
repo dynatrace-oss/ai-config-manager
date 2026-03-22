@@ -195,6 +195,27 @@ install:
 			defaultTools:  []tools.Tool{tools.Claude},
 			expectedTools: []tools.Tool{tools.Claude},
 		},
+		{
+			name: "local overlay targets extend base targets",
+			setupFunc: func(dir string) error {
+				base := `resources: []
+install:
+  targets:
+    - claude
+`
+				local := `resources: []
+install:
+  targets:
+    - opencode
+`
+				if err := os.WriteFile(filepath.Join(dir, "ai.package.yaml"), []byte(base), 0644); err != nil {
+					return err
+				}
+				return os.WriteFile(filepath.Join(dir, "ai.package.local.yaml"), []byte(local), 0644)
+			},
+			defaultTools:  []tools.Tool{tools.Copilot},
+			expectedTools: []tools.Tool{tools.Claude, tools.OpenCode},
+		},
 	}
 
 	for _, tt := range tests {

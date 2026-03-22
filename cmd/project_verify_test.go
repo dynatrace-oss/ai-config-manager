@@ -1274,6 +1274,58 @@ func TestCheckManifestSync_NoUndeclaredWithoutManifest(t *testing.T) {
 	}
 }
 
+func TestCheckManifestSync_UsesLocalOverlayResources(t *testing.T) {
+	projectDir := t.TempDir()
+	repoDir := t.TempDir()
+
+	// Base manifest does not include the local-only resource.
+	if err := os.WriteFile(filepath.Join(projectDir, manifest.ManifestFileName), []byte("resources:\n  - skill/base-only\n"), 0644); err != nil {
+		t.Fatalf("write base manifest: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, manifest.LocalManifestFileName), []byte("resources:\n  - skill/local-only\n"), 0644); err != nil {
+		t.Fatalf("write local manifest: %v", err)
+	}
+
+	// Install only the base skill so local overlay resource is reported as missing.
+	skillsDir := filepath.Join(projectDir, ".opencode", "skills")
+	if err := os.MkdirAll(skillsDir, 0755); err != nil {
+		t.Fatalf("mkdir skills dir: %v", err)
+	}
+	repoSkillDir := filepath.Join(repoDir, "skills", "base-only")
+	if err := os.MkdirAll(repoSkillDir, 0755); err != nil {
+		t.Fatalf("mkdir repo skill dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repoSkillDir, "SKILL.md"), []byte("test"), 0644); err != nil {
+		t.Fatalf("write SKILL.md: %v", err)
+	}
+	if err := os.Symlink(repoSkillDir, filepath.Join(skillsDir, "base-only")); err != nil {
+		t.Fatalf("create symlink: %v", err)
+	}
+
+	detectedTools, err := tools.DetectExistingTools(projectDir)
+	if err != nil {
+		t.Fatalf("detect tools: %v", err)
+	}
+
+	issues, err := checkManifestSync(projectDir, detectedTools, repoDir)
+	if err != nil {
+		t.Fatalf("checkManifestSync failed: %v", err)
+	}
+
+	if len(issues) != 1 {
+		t.Fatalf("expected 1 issue for local overlay resource not installed, got %d: %+v", len(issues), issues)
+	}
+	if issues[0].Resource != "skill/local-only" {
+		t.Fatalf("expected missing overlay resource issue for skill/local-only, got %+v", issues[0])
+	}
+	if issues[0].Description != "Listed in "+manifest.LocalManifestFileName+" but not installed" {
+		t.Fatalf("expected overlay attribution in description, got %q", issues[0].Description)
+	}
+	if issues[0].Path != filepath.Join(projectDir, manifest.LocalManifestFileName) {
+		t.Fatalf("expected issue path to local manifest, got %q", issues[0].Path)
+	}
+}
+
 // TestCheckManifestSync_UndeclaredIncludesNonSymlinks verifies that regular files
 // and directories in owned tool dirs are treated as undeclared content.
 func TestCheckManifestSync_UndeclaredIncludesNonSymlinks(t *testing.T) {

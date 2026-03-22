@@ -111,10 +111,12 @@ Use --dry-run to preview all planned actions without changing files.
 			return nil
 		}
 
-		manifestPath := filepath.Join(projectPath, manifest.ManifestFileName)
-		mf, err := manifest.Load(manifestPath)
+		mf, view, err := loadEffectiveProjectManifest(projectPath)
 		if err != nil {
-			return fmt.Errorf("failed to load %s: %w", manifest.ManifestFileName, err)
+			return err
+		}
+		if mf == nil {
+			return fmt.Errorf("failed to load project manifest: neither %s nor %s found", manifest.ManifestFileName, manifest.LocalManifestFileName)
 		}
 
 		expanded, expandErrs := expandManifestRefs(mf, manager.GetRepoPath())
@@ -149,7 +151,7 @@ Use --dry-run to preview all planned actions without changing files.
 		result.Planned.Removals = append(result.Planned.Removals, reconcilePlan.Removals...)
 
 		if repairPruneFlag {
-			invalidRefs, partialPkgs := findInvalidManifestRefs(mf, manager)
+			invalidRefs, partialPkgs := findInvalidManifestRefs(view, manager)
 			for _, pp := range partialPkgs {
 				result.Failed = append(result.Failed, RepairErr{
 					IssueType: "prune-package-warning",
@@ -174,19 +176,7 @@ Use --dry-run to preview all planned actions without changing files.
 			}
 
 			if repairPruneFlag && len(result.Planned.PrunePackage) > 0 {
-				for _, action := range result.Planned.PrunePackage {
-					if err := mf.Remove(action.Resource); err != nil {
-						result.Failed = append(result.Failed, RepairErr{IssueType: "prune-package", Resource: action.Resource, Message: err.Error()})
-						continue
-					}
-					result.Applied.PrunePackage = append(result.Applied.PrunePackage, action)
-				}
-				if len(result.Applied.PrunePackage) > 0 {
-					if err := mf.Save(manifestPath); err != nil {
-						result.Failed = append(result.Failed, RepairErr{IssueType: "prune-package", Message: fmt.Sprintf("failed to save %s: %v", manifest.ManifestFileName, err)})
-						result.Applied.PrunePackage = nil
-					}
-				}
+				applyManifestPruneActions(view, &result)
 			}
 		}
 
@@ -644,11 +634,33 @@ type PartialPackageWarning struct {
 	MissingMembers []string
 }
 
-func findInvalidManifestRefs(m *manifest.Manifest, manager *repo.Manager) (invalidRefs []string, partialPkgs []PartialPackageWarning) {
-	for _, ref := range m.Resources {
+func findInvalidManifestRefs(view *manifest.ProjectManifests, manager *repo.Manager) (invalidRefs []string, partialPkgs []PartialPackageWarning) {
+	if view == nil {
+		return nil, nil
+	}
+
+	seenInvalid := make(map[string]struct{})
+
+	addInvalid := func(ref string) {
+		if _, ok := seenInvalid[ref]; ok {
+			return
+		}
+		seenInvalid[ref] = struct{}{}
+		invalidRefs = append(invalidRefs, ref)
+	}
+
+	allRefs := make([]string, 0)
+	if view.Base != nil {
+		allRefs = append(allRefs, view.Base.Resources...)
+	}
+	if view.Local != nil {
+		allRefs = append(allRefs, view.Local.Resources...)
+	}
+
+	for _, ref := range allRefs {
 		idx := strings.Index(ref, "/")
 		if idx < 0 {
-			invalidRefs = append(invalidRefs, ref)
+			addInvalid(ref)
 			continue
 		}
 		typeStr := ref[:idx]
@@ -657,7 +669,7 @@ func findInvalidManifestRefs(m *manifest.Manifest, manager *repo.Manager) (inval
 		if typeStr == "package" {
 			pkg, err := manager.GetPackage(name)
 			if err != nil {
-				invalidRefs = append(invalidRefs, ref)
+				addInvalid(ref)
 				continue
 			}
 			if len(pkg.Resources) > 0 {
@@ -678,15 +690,67 @@ func findInvalidManifestRefs(m *manifest.Manifest, manager *repo.Manager) (inval
 		case "agent":
 			resType = resource.Agent
 		default:
-			invalidRefs = append(invalidRefs, ref)
+			addInvalid(ref)
 			continue
 		}
 
 		if _, err := manager.Get(name, resType); err != nil {
-			invalidRefs = append(invalidRefs, ref)
+			addInvalid(ref)
 		}
 	}
 	return invalidRefs, partialPkgs
+}
+
+func applyManifestPruneActions(view *manifest.ProjectManifests, result *RepairResult) {
+	if view == nil || result == nil {
+		return
+	}
+
+	type manifestEntry struct {
+		name string
+		path string
+		data *manifest.Manifest
+	}
+
+	entries := []manifestEntry{}
+	if view.Base != nil {
+		entries = append(entries, manifestEntry{name: manifest.ManifestFileName, path: view.BasePath, data: view.Base})
+	}
+	if view.Local != nil {
+		entries = append(entries, manifestEntry{name: manifest.LocalManifestFileName, path: view.LocalPath, data: view.Local})
+	}
+
+	appliedActions := make([]RepairAction, 0)
+	for _, action := range result.Planned.PrunePackage {
+		removedSomewhere := false
+		for _, entry := range entries {
+			if !entry.data.Has(action.Resource) {
+				continue
+			}
+			if err := entry.data.Remove(action.Resource); err != nil {
+				result.Failed = append(result.Failed, RepairErr{IssueType: "prune-package", Resource: action.Resource, Message: err.Error()})
+				continue
+			}
+			removedSomewhere = true
+		}
+		if removedSomewhere {
+			appliedActions = append(appliedActions, action)
+		}
+	}
+
+	if len(appliedActions) == 0 {
+		return
+	}
+
+	for _, entry := range entries {
+		if err := entry.data.Save(entry.path); err != nil {
+			result.Failed = append(result.Failed, RepairErr{IssueType: "prune-package", Message: fmt.Sprintf("failed to save %s: %v", entry.name, err)})
+			result.Applied.PrunePackage = nil
+			return
+		}
+	}
+
+	result.Applied.PrunePackage = append(result.Applied.PrunePackage, appliedActions...)
 }
 
 func init() {

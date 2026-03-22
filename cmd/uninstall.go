@@ -173,26 +173,56 @@ Examples:
 
 		// Update manifest if --no-save is not set (default: update manifest)
 		if !uninstallNoSaveFlag && len(resourcesToRemove) > 0 {
-			manifestPath := filepath.Join(projectPath, manifest.ManifestFileName)
-			mf, err := manifest.Load(manifestPath)
-			if err != nil && !os.IsNotExist(err) {
-				fmt.Fprintf(os.Stderr, "Warning: failed to load manifest: %v\n", err)
-			} else if mf != nil {
-				for _, res := range resourcesToRemove {
-					if err := mf.Remove(res); err != nil {
-						fmt.Fprintf(os.Stderr, "Warning: failed to remove %s from manifest: %v\n", res, err)
-					} else {
-						fmt.Printf("Removed %s from %s\n", res, manifest.ManifestFileName)
-					}
-				}
-				if err := mf.Save(manifestPath); err != nil {
-					fmt.Fprintf(os.Stderr, "Warning: failed to save manifest: %v\n", err)
-				}
-			}
+			persistUninstallManifestUpdates(projectPath, resourcesToRemove)
 		}
 
 		return nil
 	},
+}
+
+func persistUninstallManifestUpdates(projectPath string, resourcesToRemove []string) {
+	view, err := loadProjectManifestView(projectPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to load project manifests: %v\n", err)
+		return
+	}
+
+	type manifestEntry struct {
+		name string
+		path string
+		data *manifest.Manifest
+	}
+
+	entries := []manifestEntry{}
+	if view.Base != nil {
+		entries = append(entries, manifestEntry{name: manifest.ManifestFileName, path: view.BasePath, data: view.Base})
+	}
+	if view.Local != nil {
+		entries = append(entries, manifestEntry{name: manifest.LocalManifestFileName, path: view.LocalPath, data: view.Local})
+	}
+
+	for _, entry := range entries {
+		changed := false
+		for _, res := range resourcesToRemove {
+			if !entry.data.Has(res) {
+				continue
+			}
+			if err := entry.data.Remove(res); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to remove %s from %s: %v\n", res, entry.name, err)
+				continue
+			}
+			changed = true
+			fmt.Printf("Removed %s from %s\n", res, entry.name)
+		}
+
+		if !changed {
+			continue
+		}
+
+		if err := entry.data.Save(entry.path); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to save %s: %v\n", entry.name, err)
+		}
+	}
 }
 
 // uninstallAll uninstalls all resources currently installed in the project
