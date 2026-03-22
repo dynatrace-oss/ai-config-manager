@@ -511,6 +511,28 @@ func TestLoadPackage(t *testing.T) {
 	}
 }
 
+func TestLoadPackageLenient_AllowsInvalidResourceReferences(t *testing.T) {
+	tmpDir := t.TempDir()
+	pkgFile := filepath.Join(tmpDir, "bad-ref.package.json")
+	content := `{"name": "test-package", "description": "test", "resources": ["invalid", "unknown-type/resource-name"]}`
+	if err := os.WriteFile(pkgFile, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	pkg, err := LoadPackageLenient(pkgFile)
+	if err != nil {
+		t.Fatalf("LoadPackageLenient() error = %v", err)
+	}
+
+	if pkg.Name != "test-package" {
+		t.Fatalf("LoadPackageLenient() name = %q, want %q", pkg.Name, "test-package")
+	}
+
+	if len(pkg.Resources) != 2 {
+		t.Fatalf("LoadPackageLenient() resources len = %d, want 2", len(pkg.Resources))
+	}
+}
+
 // TestSavePackage tests the SavePackage function
 func TestSavePackage(t *testing.T) {
 	tests := []struct {

@@ -216,7 +216,7 @@ func (m *Manager) ListPackages() ([]PackageInfo, error) {
 		}
 
 		pkgPath := filepath.Join(packagesPath, entry.Name())
-		pkg, err := resource.LoadPackage(pkgPath)
+		pkg, err := resource.LoadPackageLenient(pkgPath)
 		if err != nil {
 			// Skip invalid packages
 			continue

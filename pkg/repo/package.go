@@ -76,7 +76,7 @@ func (m *Manager) GetPackage(name string) (*resource.Package, error) {
 	}
 
 	pkgPath := resource.GetPackagePath(name, m.repoPath)
-	pkg, err := resource.LoadPackage(pkgPath)
+	pkg, err := resource.LoadPackageLenient(pkgPath)
 	if err != nil {
 		if m.logger != nil {
 			m.logger.Error("failed to load package",

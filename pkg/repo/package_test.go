@@ -551,3 +551,40 @@ func TestListPackages_SortsAlphabetically(t *testing.T) {
 		}
 	}
 }
+
+func TestListPackages_IncludesPackagesWithInvalidReferences(t *testing.T) {
+	tmpDir := t.TempDir()
+	manager := NewManagerWithPath(tmpDir)
+
+	packagesDir := filepath.Join(tmpDir, "packages")
+	if err := os.MkdirAll(packagesDir, 0755); err != nil {
+		t.Fatalf("Failed to create packages directory: %v", err)
+	}
+
+	pkgPath := filepath.Join(packagesDir, "invalid-ref-package.package.json")
+	pkgContent := `{
+  "name": "invalid-ref-package",
+  "description": "Package with invalid refs",
+  "resources": ["invalid-format", "unknown-type/resource-name"]
+}`
+	if err := os.WriteFile(pkgPath, []byte(pkgContent), 0644); err != nil {
+		t.Fatalf("failed to write package: %v", err)
+	}
+
+	packages, err := manager.ListPackages()
+	if err != nil {
+		t.Fatalf("ListPackages() error = %v", err)
+	}
+
+	if len(packages) != 1 {
+		t.Fatalf("ListPackages() returned %d packages, want 1", len(packages))
+	}
+
+	if packages[0].Name != "invalid-ref-package" {
+		t.Fatalf("ListPackages()[0].Name = %q, want %q", packages[0].Name, "invalid-ref-package")
+	}
+
+	if packages[0].ResourceCount != 2 {
+		t.Fatalf("ListPackages()[0].ResourceCount = %d, want 2", packages[0].ResourceCount)
+	}
+}

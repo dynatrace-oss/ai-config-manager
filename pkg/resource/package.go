@@ -71,8 +71,20 @@ func ParseResourceReference(ref string) (ResourceType, string, error) {
 }
 
 // LoadPackage loads a package from a .package.json file.
-// Returns error if file doesn't exist, is invalid JSON, or missing required fields.
+// Returns error if file doesn't exist, is invalid JSON, is missing required fields,
+// or contains invalid resource references.
 func LoadPackage(filePath string) (*Package, error) {
+	return loadPackage(filePath, true)
+}
+
+// LoadPackageLenient loads a package from a .package.json file while skipping
+// resource-reference validation. This is intended for repository inspection
+// flows that still need to surface broken package references to users.
+func LoadPackageLenient(filePath string) (*Package, error) {
+	return loadPackage(filePath, false)
+}
+
+func loadPackage(filePath string, validateRefs bool) (*Package, error) {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read package file: %w", err)
@@ -96,9 +108,11 @@ func LoadPackage(filePath string) (*Package, error) {
 		return nil, fmt.Errorf("invalid package name: %w", err)
 	}
 
-	for i, ref := range pkg.Resources {
-		if _, _, err := ParseResourceReference(ref); err != nil {
-			return nil, fmt.Errorf("invalid package resource reference at index %d: %w", i, err)
+	if validateRefs {
+		for i, ref := range pkg.Resources {
+			if _, _, err := ParseResourceReference(ref); err != nil {
+				return nil, fmt.Errorf("invalid package resource reference at index %d: %w", i, err)
+			}
 		}
 	}
 
