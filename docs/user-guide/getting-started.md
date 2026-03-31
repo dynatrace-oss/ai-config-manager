@@ -86,7 +86,8 @@ curl -fsSL https://raw.githubusercontent.com/dynatrace-oss/ai-config-manager/mai
 ```
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/dynatrace-oss/ai-config-manager/main/scripts/install.ps1 | iex"
+# Run from a PowerShell prompt (PowerShell 5.1+ or pwsh 7+)
+irm https://raw.githubusercontent.com/dynatrace-oss/ai-config-manager/main/scripts/install.ps1 | iex
 ```
 
 The installer downloads the correct release asset for your OS and CPU architecture automatically. Set `AIMGR_VERSION` to install a specific release or `AIMGR_INSTALL_DIR` to override the install location.

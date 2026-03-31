@@ -7,18 +7,33 @@ before:
     - go mod tidy
 
 builds:
-  - main: ./cmd/aimgr
+  - id: default
+    main: ./cmd/aimgr
     env:
       - CGO_ENABLED=0
     goos:
       - linux
       - darwin
-      - windows
     goarch:
       - amd64
       - arm64
     ldflags:
       - -s -w
+      - -X github.com/dynatrace-oss/ai-config-manager/v3/pkg/version.Version={{.Version}}
+      - -X github.com/dynatrace-oss/ai-config-manager/v3/pkg/version.GitCommit={{.ShortCommit}}
+      - -X github.com/dynatrace-oss/ai-config-manager/v3/pkg/version.BuildDate={{.Date}}
+  # Windows build omits -s -w to retain debug symbols and avoid
+  # false-positive detections by Windows Defender / SmartScreen.
+  - id: windows
+    main: ./cmd/aimgr
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
       - -X github.com/dynatrace-oss/ai-config-manager/v3/pkg/version.Version={{.Version}}
       - -X github.com/dynatrace-oss/ai-config-manager/v3/pkg/version.GitCommit={{.ShortCommit}}
       - -X github.com/dynatrace-oss/ai-config-manager/v3/pkg/version.BuildDate={{.Date}}
