@@ -241,7 +241,7 @@ Examples:
 			return newOperationalFailureError(fmt.Errorf("verification failed: %w", err))
 		}
 
-		setVerifyStatusForCompletedResult(result)
+		setVerifyStatusForCompletedResult(result, verifyFix)
 
 		// Output results in requested format
 		if err := outputVerifyResults(result, parsedFormat, verifyFix); err != nil {
@@ -256,12 +256,21 @@ Examples:
 	},
 }
 
-func setVerifyStatusForCompletedResult(result *VerifyResult) {
+func setVerifyStatusForCompletedResult(result *VerifyResult, fixed bool) {
 	if result == nil {
 		return
 	}
 
 	result.Error = nil
+	if fixed {
+		// Deprecated `repo verify --fix` reports the repaired items in the output,
+		// but they should not count as remaining findings for status/exit-code
+		// purposes. Only unresolved issues still present after auto-fix should
+		// drive completed_with_findings.
+		result.HasErrors = len(result.TypeMismatches) > 0 || len(result.PackagesWithMissingRefs) > 0
+		result.HasWarnings = len(result.MissingSourcePaths) > 0
+	}
+
 	if result.HasErrors || result.HasWarnings {
 		result.Status = verifyStatusCompletedWithFindings
 		return

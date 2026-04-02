@@ -15,6 +15,37 @@ import (
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/resource"
 )
 
+func requireCombinedOutputExitCode(t *testing.T, err error, expected int, output string) {
+	t.Helper()
+
+	if expected == 0 {
+		if err != nil {
+			t.Fatalf("expected success (exit 0), got err=%v\nOutput: %s", err, output)
+		}
+		return
+	}
+
+	if err == nil {
+		t.Fatalf("expected exit code %d, got success\nOutput: %s", expected, output)
+	}
+
+	exitErr, ok := err.(*exec.ExitError)
+	if !ok {
+		t.Fatalf("expected ExitError for exit %d, got %T (%v)\nOutput: %s", expected, err, err, output)
+	}
+
+	if exitErr.ExitCode() != expected {
+		t.Fatalf("expected exit code %d, got %d\nOutput: %s", expected, exitErr.ExitCode(), output)
+	}
+}
+
+func assertFindingsStatus(t *testing.T, output string) {
+	t.Helper()
+	if !strings.Contains(output, "Status: Findings detected (exit code 1)") {
+		t.Errorf("expected findings status summary, got: %s", output)
+	}
+}
+
 // TestCLIRepoVerifyBasic tests basic verify command execution
 func TestCLIRepoVerifyBasic(t *testing.T) {
 	repoDir := t.TempDir()
@@ -66,7 +97,7 @@ func TestCLIRepoVerifyPackageWithMissingRefs(t *testing.T) {
 	}
 
 	// Test: verify should detect package with missing resource references
-	output, _ := runAimgr(t, "repo", "verify")
+	output, err := runAimgr(t, "repo", "verify")
 
 	if !strings.Contains(output, "Packages with missing resource references") {
 		t.Errorf("Expected 'Packages with missing resource references' error, got: %s", output)
@@ -89,9 +120,8 @@ func TestCLIRepoVerifyPackageWithMissingRefs(t *testing.T) {
 	}
 
 	// Should be an error (exit code 1)
-	if !strings.Contains(output, "ERRORS found") {
-		t.Errorf("Packages with missing refs should be an error")
-	}
+	requireCombinedOutputExitCode(t, err, 1, output)
+	assertFindingsStatus(t, output)
 
 	// Verify it shows the count of missing resources (in the MISSING COUNT column)
 	if !strings.Contains(output, "│ 3             │") && !strings.Contains(output, "│ 3 │") {
@@ -281,7 +311,7 @@ func TestCLIRepoVerifyHealthyPackage(t *testing.T) {
 	}
 
 	// Test: verify should find no issues
-	output, _ := runAimgr(t, "repo", "verify")
+	output, err := runAimgr(t, "repo", "verify")
 
 	if !strings.Contains(output, "No issues found") {
 		t.Errorf("Expected 'No issues found' for healthy package, got: %s", output)
@@ -339,7 +369,7 @@ func TestCLIRepoVerifyPackageInvalidRef(t *testing.T) {
 	}
 
 	// Test: verify should detect invalid references as missing
-	output, _ := runAimgr(t, "repo", "verify")
+	output, err := runAimgr(t, "repo", "verify")
 
 	if !strings.Contains(output, "Packages with missing resource references") {
 		t.Errorf("Expected 'Packages with missing resource references' error, got: %s", output)
@@ -359,9 +389,8 @@ func TestCLIRepoVerifyPackageInvalidRef(t *testing.T) {
 	}
 
 	// Should be an error
-	if !strings.Contains(output, "ERRORS found") {
-		t.Errorf("Invalid package refs should be an error")
-	}
+	requireCombinedOutputExitCode(t, err, 1, output)
+	assertFindingsStatus(t, output)
 }
 
 // TestCLIRepoVerifyJSON tests JSON output format
@@ -458,7 +487,7 @@ description: Command without metadata
 	}
 
 	// Test: verify should detect resource without metadata
-	output, _ := runAimgr(t, "repo", "verify")
+	output, err := runAimgr(t, "repo", "verify")
 
 	if !strings.Contains(output, "Resources without metadata") {
 		t.Errorf("Expected 'Resources without metadata' warning, got: %s", output)
@@ -469,12 +498,11 @@ description: Command without metadata
 	}
 
 	// Verify it's a warning, not an error (exit code 0)
-	if strings.Contains(output, "ERRORS found") {
-		t.Errorf("Resources without metadata should be a warning, not an error")
-	}
+	requireCombinedOutputExitCode(t, err, 1, output)
+	assertFindingsStatus(t, output)
 
 	// Verify metadata doesn't exist yet
-	_, err := manager.GetMetadata("no-meta-cmd", resource.Command)
+	_, err = manager.GetMetadata("no-meta-cmd", resource.Command)
 	if err == nil {
 		t.Errorf("Metadata should not exist before --fix")
 	}
@@ -502,7 +530,7 @@ func TestCLIRepoVerifyOrphanedMetadata(t *testing.T) {
 	}
 
 	// Test: verify should detect orphaned metadata
-	output, _ := runAimgr(t, "repo", "verify")
+	output, err := runAimgr(t, "repo", "verify")
 
 	if !strings.Contains(output, "Orphaned metadata") {
 		t.Errorf("Expected 'Orphaned metadata' error, got: %s", output)
@@ -513,9 +541,8 @@ func TestCLIRepoVerifyOrphanedMetadata(t *testing.T) {
 	}
 
 	// Should be an error (exit code 1)
-	if !strings.Contains(output, "ERRORS found") {
-		t.Errorf("Orphaned metadata should be an error")
-	}
+	requireCombinedOutputExitCode(t, err, 1, output)
+	assertFindingsStatus(t, output)
 }
 
 // TestCLIRepoVerifyMissingSourcePaths tests detection of missing source paths
@@ -538,7 +565,7 @@ func TestCLIRepoVerifyMissingSourcePaths(t *testing.T) {
 	}
 
 	// Test: verify should detect missing source path
-	output, _ := runAimgr(t, "repo", "verify")
+	output, err := runAimgr(t, "repo", "verify")
 
 	if !strings.Contains(output, "missing source paths") {
 		t.Errorf("Expected 'missing source paths' warning, got: %s", output)
@@ -549,9 +576,8 @@ func TestCLIRepoVerifyMissingSourcePaths(t *testing.T) {
 	}
 
 	// Should be a warning, not an error
-	if strings.Contains(output, "ERRORS found") {
-		t.Errorf("Missing source paths should be a warning, not an error")
-	}
+	requireCombinedOutputExitCode(t, err, 1, output)
+	assertFindingsStatus(t, output)
 }
 
 // TestCLIRepoVerifyTypeMismatches tests detection of type mismatches
@@ -602,7 +628,7 @@ description: Type mismatch test
 	}
 
 	// Test: verify should detect type mismatch
-	output, _ := runAimgr(t, "repo", "verify")
+	output, err := runAimgr(t, "repo", "verify")
 
 	if !strings.Contains(output, "Type mismatches") {
 		t.Errorf("Expected 'Type mismatches' error, got: %s", output)
@@ -617,9 +643,8 @@ description: Type mismatch test
 	}
 
 	// Should be an error (exit code 1)
-	if !strings.Contains(output, "ERRORS found") {
-		t.Errorf("Type mismatches should be an error")
-	}
+	requireCombinedOutputExitCode(t, err, 1, output)
+	assertFindingsStatus(t, output)
 }
 
 // TestCLIRepoVerifyFixFlag tests the --fix flag functionality
@@ -653,9 +678,7 @@ description: Test --fix flag
 
 	// Test: verify --fix should create missing metadata
 	output, err := runAimgr(t, "repo", "verify", "--fix")
-	if err != nil {
-		t.Fatalf("repo verify --fix failed: %v\nOutput: %s", err, output)
-	}
+	requireCombinedOutputExitCode(t, err, 0, output)
 
 	if !strings.Contains(output, "fix-test") {
 		t.Errorf("Expected 'fix-test' in output, got: %s", output)
@@ -714,7 +737,8 @@ func TestCLIRepoVerifyFixOrphanedMetadata(t *testing.T) {
 	}
 
 	// Test: verify --fix should remove orphaned metadata
-	output, _ := runAimgr(t, "repo", "verify", "--fix")
+	output, err := runAimgr(t, "repo", "verify", "--fix")
+	requireCombinedOutputExitCode(t, err, 0, output)
 
 	if !strings.Contains(output, "fix-orphan") {
 		t.Errorf("Expected 'fix-orphan' in output, got: %s", output)
@@ -838,7 +862,7 @@ func TestCLIRepoVerifyHealthyRepo(t *testing.T) {
 	}
 
 	// Test: verify should find no issues
-	output, _ := runAimgr(t, "repo", "verify")
+	output, err := runAimgr(t, "repo", "verify")
 
 	if !strings.Contains(output, "No issues found") {
 		t.Errorf("Expected 'No issues found', got: %s", output)
@@ -904,14 +928,15 @@ description: Skill for verify testing
 	}
 
 	// Test --fix creates metadata for skill
-	output, _ = runAimgr(t, "repo", "verify", "--fix")
+	output, err := runAimgr(t, "repo", "verify", "--fix")
+	requireCombinedOutputExitCode(t, err, 0, output)
 
 	if !strings.Contains(output, "Created metadata") {
 		t.Errorf("Expected 'Created metadata', got: %s", output)
 	}
 
 	// Verify metadata was created
-	_, err := manager.GetMetadata("verify-skill", resource.Skill)
+	_, err = manager.GetMetadata("verify-skill", resource.Skill)
 	if err != nil {
 		t.Errorf("Metadata should be created for skill, got error: %v", err)
 	}
@@ -951,14 +976,15 @@ description: Agent for verify testing
 	}
 
 	// Test --fix creates metadata for agent
-	output, _ = runAimgr(t, "repo", "verify", "--fix")
+	output, err := runAimgr(t, "repo", "verify", "--fix")
+	requireCombinedOutputExitCode(t, err, 0, output)
 
 	if !strings.Contains(output, "Created metadata") {
 		t.Errorf("Expected 'Created metadata', got: %s", output)
 	}
 
 	// Verify metadata was created
-	_, err := manager.GetMetadata("verify-agent", resource.Agent)
+	_, err = manager.GetMetadata("verify-agent", resource.Agent)
 	if err != nil {
 		t.Errorf("Metadata should be created for agent, got error: %v", err)
 	}
@@ -1022,7 +1048,7 @@ description: No metadata
 	}
 
 	// Test: verify should find both issues
-	output, _ := runAimgr(t, "repo", "verify")
+	output, err := runAimgr(t, "repo", "verify")
 
 	// Should detect resource without metadata
 	if !strings.Contains(output, "Resources without metadata") {
@@ -1041,9 +1067,8 @@ description: No metadata
 	}
 
 	// Should have errors (orphaned metadata)
-	if !strings.Contains(output, "ERRORS found") {
-		t.Errorf("Expected 'ERRORS found', got: %s", output)
-	}
+	requireCombinedOutputExitCode(t, err, 1, output)
+	assertFindingsStatus(t, output)
 
 	// Should suggest repair
 	if !strings.Contains(output, "aimgr repo repair") {

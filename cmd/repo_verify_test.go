@@ -403,7 +403,7 @@ func TestRepoVerifyFixDeprecationWarning(t *testing.T) {
 func TestSetVerifyStatusForCompletedResult(t *testing.T) {
 	t.Run("clean result", func(t *testing.T) {
 		result := &VerifyResult{HasErrors: false, HasWarnings: false}
-		setVerifyStatusForCompletedResult(result)
+		setVerifyStatusForCompletedResult(result, false)
 		if result.Status != verifyStatusClean {
 			t.Fatalf("status=%q want %q", result.Status, verifyStatusClean)
 		}
@@ -411,7 +411,7 @@ func TestSetVerifyStatusForCompletedResult(t *testing.T) {
 
 	t.Run("warnings only is completed_with_findings", func(t *testing.T) {
 		result := &VerifyResult{HasErrors: false, HasWarnings: true}
-		setVerifyStatusForCompletedResult(result)
+		setVerifyStatusForCompletedResult(result, false)
 		if result.Status != verifyStatusCompletedWithFindings {
 			t.Fatalf("status=%q want %q", result.Status, verifyStatusCompletedWithFindings)
 		}
@@ -419,7 +419,33 @@ func TestSetVerifyStatusForCompletedResult(t *testing.T) {
 
 	t.Run("errors is completed_with_findings", func(t *testing.T) {
 		result := &VerifyResult{HasErrors: true, HasWarnings: false}
-		setVerifyStatusForCompletedResult(result)
+		setVerifyStatusForCompletedResult(result, false)
+		if result.Status != verifyStatusCompletedWithFindings {
+			t.Fatalf("status=%q want %q", result.Status, verifyStatusCompletedWithFindings)
+		}
+	})
+
+	t.Run("fixed resources without remaining findings is clean", func(t *testing.T) {
+		result := &VerifyResult{
+			ResourcesWithoutMetadata: []ResourceIssue{{Name: "cmd", Type: resource.Command}},
+			HasWarnings:              true,
+		}
+		setVerifyStatusForCompletedResult(result, true)
+		if result.Status != verifyStatusClean {
+			t.Fatalf("status=%q want %q", result.Status, verifyStatusClean)
+		}
+		if result.HasWarnings {
+			t.Fatalf("expected repaired missing metadata not to leave warnings")
+		}
+	})
+
+	t.Run("fixed with unresolved missing source path remains completed_with_findings", func(t *testing.T) {
+		result := &VerifyResult{
+			ResourcesWithoutMetadata: []ResourceIssue{{Name: "cmd", Type: resource.Command}},
+			MissingSourcePaths:       []MetadataIssue{{Name: "cmd", Type: resource.Command}},
+			HasWarnings:              true,
+		}
+		setVerifyStatusForCompletedResult(result, true)
 		if result.Status != verifyStatusCompletedWithFindings {
 			t.Fatalf("status=%q want %q", result.Status, verifyStatusCompletedWithFindings)
 		}

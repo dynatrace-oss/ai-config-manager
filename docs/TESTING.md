@@ -16,6 +16,7 @@ make e2e-test         # Full CLI tests (~1-2min)
 - **ALWAYS** use `t.TempDir()` for temporary directories
 - **ALWAYS** use `repo.NewManagerWithPath(tmpDir)` in tests -- NEVER `NewManager()`
 - **NEVER** write to `~/.local/share/ai-config/` in tests
+- **ALWAYS** run `make integration-test` before finishing larger work such as a bigger feature, an epic, or broad cross-cutting changes. Focused tests are not enough for session close in those cases.
 
 ## Concurrency Test Expectations
 
