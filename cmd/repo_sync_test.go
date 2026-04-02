@@ -229,6 +229,25 @@ func createNestedCommandTestSource(t *testing.T) string {
 	return sourceDir
 }
 
+func TestRunSync_MissingRepoFailsBeforeCreatingLockState(t *testing.T) {
+	repoPath := t.TempDir()
+	t.Setenv("AIMGR_REPO_PATH", repoPath)
+	if err := os.RemoveAll(repoPath); err != nil {
+		t.Fatalf("failed to remove repo path: %v", err)
+	}
+
+	err := runSync(syncCmd, []string{})
+	if err == nil {
+		t.Fatal("expected error for missing repo")
+	}
+	if !strings.Contains(err.Error(), "run 'aimgr repo init' or 'aimgr repo apply-manifest <path-or-url>' first") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(repoPath, ".workspace")); !os.IsNotExist(statErr) {
+		t.Fatalf("expected missing repo path to remain untouched, stat err: %v", statErr)
+	}
+}
+
 // setupTestManifest creates a test repository with ai.repo.yaml
 // Returns the repo path for verification and a cleanup function
 func setupTestManifest(t *testing.T, sources []*repomanifest.Source) (string, func()) {

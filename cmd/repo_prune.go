@@ -91,6 +91,14 @@ Examples:
 			return err
 		}
 
+		repoExists, err := repoPathExists(manager.GetRepoPath())
+		if err != nil {
+			return err
+		}
+		if !repoExists {
+			return outputPruneResult(buildPruneResult(nil, pruneDryRunFlag), parsedFormat)
+		}
+
 		repoLock, err := manager.AcquireRepoWriteLock(cmd.Context())
 		if err != nil {
 			return fmt.Errorf("failed to acquire repository lock at %s: %w", manager.RepoLockPath(), err)

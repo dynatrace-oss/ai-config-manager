@@ -372,3 +372,24 @@ func TestRepoInfo_JSON_IncludesOverrideState(t *testing.T) {
 		t.Fatalf("expected restore_to to include remote url, got %q", parsed.Sources[0].RestoreTo)
 	}
 }
+
+func TestRepoInfo_MissingRepoDoesNotCreateLockState(t *testing.T) {
+	repoDir := t.TempDir()
+	t.Setenv("AIMGR_REPO_PATH", repoDir)
+	if err := os.RemoveAll(repoDir); err != nil {
+		t.Fatalf("failed to remove repo dir: %v", err)
+	}
+
+	stdout, _ := captureOutput(t, func() {
+		if err := repoInfoCmd.RunE(repoInfoCmd, nil); err != nil {
+			t.Fatalf("repo info failed: %v", err)
+		}
+	})
+
+	if !strings.Contains(stdout, "Repository not initialized") {
+		t.Fatalf("expected missing repo message, got:\n%s", stdout)
+	}
+	if _, statErr := os.Stat(filepath.Join(repoDir, ".workspace")); !os.IsNotExist(statErr) {
+		t.Fatalf("expected missing repo path to remain untouched, stat err: %v", statErr)
+	}
+}

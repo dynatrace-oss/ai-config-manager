@@ -3,6 +3,7 @@ package cmd
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -230,6 +231,27 @@ func TestFindUnreferencedCaches_WithUnreferenced(t *testing.T) {
 	expectedPath := filepath.Join(workspaceDir, unreferencedHash)
 	if unreferenced[0].Path != expectedPath {
 		t.Errorf("Expected path %s, got %s", expectedPath, unreferenced[0].Path)
+	}
+}
+
+func TestRepoPrune_MissingRepoDoesNotCreateLockState(t *testing.T) {
+	repoDir := t.TempDir()
+	t.Setenv("AIMGR_REPO_PATH", repoDir)
+	if err := os.RemoveAll(repoDir); err != nil {
+		t.Fatalf("failed to remove repo dir: %v", err)
+	}
+
+	stdout, _ := captureOutput(t, func() {
+		if err := repoPruneCmd.RunE(repoPruneCmd, nil); err != nil {
+			t.Fatalf("repo prune failed: %v", err)
+		}
+	})
+
+	if !strings.Contains(stdout, "No unreferenced workspace caches found.") {
+		t.Fatalf("expected empty prune output, got:\n%s", stdout)
+	}
+	if _, statErr := os.Stat(filepath.Join(repoDir, ".workspace")); !os.IsNotExist(statErr) {
+		t.Fatalf("expected missing repo path to remain untouched, stat err: %v", statErr)
 	}
 }
 

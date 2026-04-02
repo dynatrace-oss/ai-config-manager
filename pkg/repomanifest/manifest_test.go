@@ -151,6 +151,24 @@ func TestLoad_MissingFile(t *testing.T) {
 	}
 }
 
+func TestLoadForMutation_MissingFile(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	m, err := LoadForMutation(tmpDir)
+	if err != nil {
+		t.Fatalf("LoadForMutation() unexpected error for missing file: %v", err)
+	}
+	if m == nil {
+		t.Fatal("LoadForMutation() returned nil manifest for missing file")
+	}
+	if m.Version != 1 {
+		t.Errorf("expected version 1, got %d", m.Version)
+	}
+	if len(m.Sources) != 0 {
+		t.Errorf("expected empty sources, got %d items", len(m.Sources))
+	}
+}
+
 func TestLoad_InvalidManifest(t *testing.T) {
 	tests := []struct {
 		name    string

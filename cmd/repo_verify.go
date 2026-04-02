@@ -149,8 +149,13 @@ Examples:
 
 		repoPath := manager.GetRepoPath()
 
+		repoExists, err := repoPathExists(repoPath)
+		if err != nil {
+			return newOperationalFailureError(err)
+		}
+
 		// Check if repository exists
-		if _, err := os.Stat(repoPath); os.IsNotExist(err) {
+		if !repoExists {
 			result := VerifyResult{Status: verifyStatusClean, HasErrors: false, HasWarnings: false}
 			return outputVerifyResults(&result, parsedFormat, verifyFix)
 		}

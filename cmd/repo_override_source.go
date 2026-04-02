@@ -82,6 +82,10 @@ func runRepoOverrideSource(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	if err := ensureRepoInitialized(mgr); err != nil {
+		return err
+	}
+
 	repoLock, err := mgr.AcquireRepoWriteLock(cmd.Context())
 	if err != nil {
 		return fmt.Errorf("failed to acquire repository lock at %s: %w", mgr.RepoLockPath(), err)

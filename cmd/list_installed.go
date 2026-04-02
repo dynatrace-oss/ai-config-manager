@@ -82,11 +82,11 @@ func newListInstalledStateWithContext(ctx context.Context, projectPath string) *
 	// Create repo manager at most once for this command invocation.
 	if hasPackageRefs {
 		if manager, managerErr := NewManagerWithLogLevel(); managerErr == nil {
-			repoLock, lockErr := manager.AcquireRepoReadLock(ctx)
-			if lockErr == nil {
+			repoLock, acquired, lockErr := acquireRepoReadLockIfRepoExists(ctx, manager)
+			if lockErr == nil && acquired {
 				state.manager = manager
 				state.repoLock = repoLock
-			} else {
+			} else if lockErr != nil {
 				state.err = fmt.Errorf("failed to acquire repository read lock at %s: %w", manager.RepoLockPath(), lockErr)
 			}
 		} else {

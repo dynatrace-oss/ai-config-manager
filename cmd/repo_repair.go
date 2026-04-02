@@ -101,6 +101,21 @@ Examples:
 			return newOperationalFailureError(err)
 		}
 
+		repoExists, err := repoPathExists(manager.GetRepoPath())
+		if err != nil {
+			if outErr := outputRepoRepairOperationalFailure(parsedFormat, err); outErr != nil {
+				return outErr
+			}
+			if parsedFormat == output.JSON {
+				return newSuppressedOperationalFailureError(err)
+			}
+			return newOperationalFailureError(err)
+		}
+		if !repoExists {
+			result := &RepoRepairResult{DryRun: repoRepairDryRun, Status: repoRepairStatusClean}
+			return outputRepoRepairResults(result, parsedFormat)
+		}
+
 		repoLock, err := manager.AcquireRepoWriteLock(cmd.Context())
 		if err != nil {
 			if outErr := outputRepoRepairOperationalFailure(parsedFormat, err); outErr != nil {
@@ -126,14 +141,6 @@ Examples:
 				return newSuppressedOperationalFailureError(err)
 			}
 			return newOperationalFailureError(err)
-		}
-
-		repoPath := manager.GetRepoPath()
-
-		// If the repository doesn't exist yet, there's nothing to repair
-		if _, err := os.Stat(repoPath); os.IsNotExist(err) {
-			result := &RepoRepairResult{DryRun: repoRepairDryRun, Status: repoRepairStatusClean}
-			return outputRepoRepairResults(result, parsedFormat)
 		}
 
 		// Run diagnostic scan without applying fixes

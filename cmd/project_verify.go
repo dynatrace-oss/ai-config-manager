@@ -52,6 +52,14 @@ Examples:
 			return err
 		}
 
+		repoExists, err := repoPathExists(manager.GetRepoPath())
+		if err != nil {
+			return err
+		}
+		if !repoExists {
+			return fmt.Errorf("repository is not initialized at %s; run 'aimgr repo init' or 'aimgr repo apply-manifest <path-or-url>' first", manager.GetRepoPath())
+		}
+
 		repoLock, err := manager.AcquireRepoReadLock(cmd.Context())
 		if err != nil {
 			return fmt.Errorf("failed to acquire repository read lock at %s: %w", manager.RepoLockPath(), err)

@@ -495,6 +495,9 @@ func TestRepoVerifyLockContentionReturnsTypedExitError(t *testing.T) {
 	t.Setenv("AIMGR_REPO_PATH", repoDir)
 
 	manager := repo.NewManagerWithPath(repoDir)
+	if err := manager.Init(); err != nil {
+		t.Fatalf("init repo: %v", err)
+	}
 	lock, err := manager.AcquireRepoWriteLock(context.Background())
 	if err != nil {
 		t.Fatalf("acquire setup lock: %v", err)

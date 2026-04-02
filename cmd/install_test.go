@@ -1083,3 +1083,79 @@ func TestInstallFromManifest_LocalOverlayMissingResourceFails(t *testing.T) {
 		t.Fatalf("installFromManifest() error = %v, want missing-resource install failure", err)
 	}
 }
+
+func TestInstallFromManifest_MissingRepoFailsBeforeCreatingLockState(t *testing.T) {
+	repoPath := t.TempDir()
+	projectPath := t.TempDir()
+	if err := os.RemoveAll(repoPath); err != nil {
+		t.Fatalf("failed to remove repo path: %v", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(projectPath, manifest.ManifestFileName), []byte("resources:\n  - skill/test-skill\n"), 0644); err != nil {
+		t.Fatalf("write manifest: %v", err)
+	}
+
+	oldRepoEnv := os.Getenv("AIMGR_REPO_PATH")
+	oldProjectPathFlag := projectPathFlag
+	oldInstallTargetFlag := installTargetFlag
+	t.Cleanup(func() {
+		projectPathFlag = oldProjectPathFlag
+		installTargetFlag = oldInstallTargetFlag
+		if oldRepoEnv != "" {
+			_ = os.Setenv("AIMGR_REPO_PATH", oldRepoEnv)
+		} else {
+			_ = os.Unsetenv("AIMGR_REPO_PATH")
+		}
+	})
+
+	projectPathFlag = projectPath
+	installTargetFlag = ""
+	_ = os.Setenv("AIMGR_REPO_PATH", repoPath)
+
+	err := installFromManifest()
+	if err == nil {
+		t.Fatal("expected error for missing repo")
+	}
+	if !strings.Contains(err.Error(), "repository is not initialized") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(repoPath, ".workspace")); !os.IsNotExist(statErr) {
+		t.Fatalf("expected missing repo path to remain untouched, stat err: %v", statErr)
+	}
+}
+
+func TestInstallFromManifest_EmptyManifestRepoPathExists(t *testing.T) {
+	repoPath := t.TempDir()
+	projectPath := t.TempDir()
+
+	if err := os.WriteFile(filepath.Join(projectPath, manifest.ManifestFileName), []byte("resources: []\n"), 0644); err != nil {
+		t.Fatalf("write manifest: %v", err)
+	}
+
+	oldRepoEnv := os.Getenv("AIMGR_REPO_PATH")
+	oldProjectPathFlag := projectPathFlag
+	oldInstallTargetFlag := installTargetFlag
+	t.Cleanup(func() {
+		projectPathFlag = oldProjectPathFlag
+		installTargetFlag = oldInstallTargetFlag
+		if oldRepoEnv != "" {
+			_ = os.Setenv("AIMGR_REPO_PATH", oldRepoEnv)
+		} else {
+			_ = os.Unsetenv("AIMGR_REPO_PATH")
+		}
+	})
+
+	projectPathFlag = projectPath
+	installTargetFlag = ""
+	_ = os.Setenv("AIMGR_REPO_PATH", repoPath)
+
+	stdout, _ := captureOutput(t, func() {
+		if err := installFromManifest(); err != nil {
+			t.Fatalf("installFromManifest() failed: %v", err)
+		}
+	})
+
+	if !strings.Contains(stdout, "No resources defined") {
+		t.Fatalf("expected no-resources output, got:\n%s", stdout)
+	}
+}

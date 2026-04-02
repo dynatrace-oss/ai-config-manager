@@ -3,7 +3,6 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -40,6 +39,10 @@ func runShowManifest(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	if err := ensureRepoInitialized(mgr); err != nil {
+		return err
+	}
+
 	repoLock, err := mgr.AcquireRepoReadLock(cmd.Context())
 	if err != nil {
 		return fmt.Errorf("failed to acquire repository read lock at %s: %w", mgr.RepoLockPath(), err)
@@ -52,10 +55,10 @@ func runShowManifest(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	manifestPath := filepath.Join(mgr.GetRepoPath(), repomanifest.ManifestFileName)
+	manifestPath := repoManifestPath(mgr.GetRepoPath())
 	if _, err := os.Stat(manifestPath); err != nil {
 		if os.IsNotExist(err) {
-			return fmt.Errorf("%s not found in %s; run 'aimgr repo init' or 'aimgr repo apply-manifest <path-or-url>' first", repomanifest.ManifestFileName, mgr.GetRepoPath())
+			return missingRepoInitializationError(mgr.GetRepoPath())
 		}
 		return fmt.Errorf("failed to read manifest: %w", err)
 	}

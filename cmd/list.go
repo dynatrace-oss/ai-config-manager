@@ -79,6 +79,26 @@ See also:
 			return err
 		}
 
+		repoExists, err := repoPathExists(manager.GetRepoPath())
+		if err != nil {
+			return err
+		}
+		if !repoExists {
+			if len(args) > 0 {
+				resourceType, _, _ := pattern.ParsePattern(args[0])
+				if resourceType == resource.PackageType {
+					fmt.Printf("No packages matching pattern '%s' found in repository.\n", args[0])
+				} else {
+					fmt.Printf("No resources matching pattern '%s' found in repository.\n", args[0])
+				}
+				return nil
+			}
+
+			fmt.Println("No resources or packages found in repository.")
+			fmt.Println("\nRun 'aimgr repo init' or 'aimgr repo apply-manifest <path-or-url>' to initialize the repository.")
+			return nil
+		}
+
 		repoLock, err := manager.AcquireRepoReadLock(cmd.Context())
 		if err != nil {
 			return fmt.Errorf("failed to acquire repository read lock at %s: %w", manager.RepoLockPath(), err)

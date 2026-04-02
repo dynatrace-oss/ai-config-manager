@@ -72,6 +72,19 @@ Examples:
 			logger.Debug("repo info")
 		}
 
+		repoPath := manager.GetRepoPath()
+		repoExists, err := repoPathExists(repoPath)
+		if err != nil {
+			return err
+		}
+		if !repoExists {
+			fmt.Println("Repository not initialized")
+			fmt.Printf("Expected location: %s\n", repoPath)
+			fmt.Println()
+			fmt.Println("Run 'aimgr repo init' or 'aimgr repo apply-manifest <path-or-url>' to initialize the repository.")
+			return nil
+		}
+
 		repoLock, err := manager.AcquireRepoReadLock(cmd.Context())
 		if err != nil {
 			return fmt.Errorf("failed to acquire repository read lock at %s: %w", manager.RepoLockPath(), err)
@@ -82,18 +95,6 @@ Examples:
 
 		if err := maybeHoldAfterRepoLock(cmd.Context(), "info"); err != nil {
 			return err
-		}
-
-		// Get repository path
-		repoPath := manager.GetRepoPath()
-
-		// Check if repository exists
-		if _, err := os.Stat(repoPath); os.IsNotExist(err) {
-			fmt.Println("Repository not initialized")
-			fmt.Printf("Expected location: %s\n", repoPath)
-			fmt.Println()
-			fmt.Println("Run 'aimgr repo add <resource>' to add resources and initialize the repository.")
-			return nil
 		}
 
 		// List all resources to get counts

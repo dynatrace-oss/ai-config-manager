@@ -475,6 +475,10 @@ func migrateIfNeeded(repoPath string, m *Manifest) error {
 	// Check if migration is needed by looking for old-format data in raw YAML
 	// We need to re-parse to detect fields that aren't in our struct anymore
 	path := filepath.Join(repoPath, ManifestFileName)
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return nil
+	}
+
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return err

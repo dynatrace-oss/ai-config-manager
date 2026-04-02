@@ -15,6 +15,10 @@ func TestRepoMutatingCommands_FailWhenRepoLockHeld(t *testing.T) {
 	t.Setenv("AIMGR_REPO_PATH", repoPath)
 
 	manager := repo.NewManagerWithPath(repoPath)
+	if err := manager.Init(); err != nil {
+		t.Fatalf("failed to initialize setup repo: %v", err)
+	}
+
 	lock, err := manager.AcquireRepoWriteLock(context.Background())
 	if err != nil {
 		t.Fatalf("failed to acquire setup repo lock: %v", err)
@@ -72,6 +76,9 @@ func TestRepoReadCommands_FailWhenRepoWriteLockHeld(t *testing.T) {
 	t.Setenv("AIMGR_REPO_PATH", repoPath)
 
 	manager := repo.NewManagerWithPath(repoPath)
+	if err := manager.Init(); err != nil {
+		t.Fatalf("failed to initialize setup repo: %v", err)
+	}
 	lock, err := manager.AcquireRepoWriteLock(context.Background())
 	if err != nil {
 		t.Fatalf("failed to acquire setup repo write lock: %v", err)
@@ -114,6 +121,9 @@ func TestProjectRepoBackedCommands_FailWhenRepoWriteLockHeld(t *testing.T) {
 	t.Setenv("AIMGR_REPO_PATH", repoPath)
 
 	manager := repo.NewManagerWithPath(repoPath)
+	if err := manager.Init(); err != nil {
+		t.Fatalf("failed to initialize setup repo: %v", err)
+	}
 	lock, err := manager.AcquireRepoWriteLock(context.Background())
 	if err != nil {
 		t.Fatalf("failed to acquire setup repo write lock: %v", err)

@@ -54,6 +54,15 @@ func runDrop(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	repoPath := mgr.GetRepoPath()
+	repoExists, err := repoPathExists(repoPath)
+	if err != nil {
+		return err
+	}
+	if !repoExists {
+		return missingRepoPathError(repoPath)
+	}
+
 	repoLock, err := mgr.AcquireRepoWriteLock(cmd.Context())
 	if err != nil {
 		return fmt.Errorf("failed to acquire repository lock at %s: %w", mgr.RepoLockPath(), err)

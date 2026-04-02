@@ -59,6 +59,9 @@ func TestRepoShowManifestPrintsCurrentManifest(t *testing.T) {
 func TestRepoShowManifestErrorsWhenManifestMissing(t *testing.T) {
 	repoDir := t.TempDir()
 	t.Setenv("AIMGR_REPO_PATH", repoDir)
+	if err := os.RemoveAll(repoDir); err != nil {
+		t.Fatalf("failed to remove repo dir: %v", err)
+	}
 
 	err := runShowManifest(repoShowManifestCmd, nil)
 	if err == nil {
@@ -66,6 +69,9 @@ func TestRepoShowManifestErrorsWhenManifestMissing(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "run 'aimgr repo init' or 'aimgr repo apply-manifest <path-or-url>' first") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(repoDir, ".workspace")); !os.IsNotExist(statErr) {
+		t.Fatalf("expected missing repo path to remain untouched, stat err: %v", statErr)
 	}
 }
 
