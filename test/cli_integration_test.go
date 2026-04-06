@@ -438,7 +438,13 @@ func TestCLIUninstall(t *testing.T) {
 
 // TestCLIUninstallSkipsNonSymlinks tests uninstall safety features
 func TestCLIUninstallSkipsNonSymlinks(t *testing.T) {
+	setupTestEnvironment(t)
 	projectDir := t.TempDir()
+
+	initOutput, err := runAimgr(t, "repo", "init")
+	if err != nil {
+		t.Fatalf("Failed to initialize repo: %v\nOutput: %s", err, initOutput)
+	}
 
 	// Create .claude directory with a regular file (not a symlink)
 	claudeSkillsDir := filepath.Join(projectDir, ".claude", "skills")
@@ -472,8 +478,14 @@ func TestCLIUninstallSkipsNonSymlinks(t *testing.T) {
 
 // TestCLIUninstallSkipsExternalSymlinks tests uninstall only removes aimgr-managed symlinks
 func TestCLIUninstallSkipsExternalSymlinks(t *testing.T) {
+	setupTestEnvironment(t)
 	projectDir := t.TempDir()
 	externalDir := t.TempDir()
+
+	initOutput, err := runAimgr(t, "repo", "init")
+	if err != nil {
+		t.Fatalf("Failed to initialize repo: %v\nOutput: %s", err, initOutput)
+	}
 
 	// Create .claude directory
 	claudeSkillsDir := filepath.Join(projectDir, ".claude", "skills")
