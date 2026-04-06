@@ -105,6 +105,9 @@ func runRepoOverrideSource(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to load manifest: %w", err)
 	}
+	if len(args) == 0 {
+		return fmt.Errorf("missing source name")
+	}
 
 	sourceName := args[0]
 	src, found := findSourceByNameOnly(manifest, sourceName)
@@ -116,7 +119,11 @@ func runRepoOverrideSource(cmd *cobra.Command, args []string) error {
 	if repoOverrideSourceClearFlag {
 		result, err = clearSourceOverride(mgr, manifest, src)
 	} else {
-		result, err = applySourceOverride(mgr, manifest, src, args[1])
+		if len(args) < 2 {
+			return fmt.Errorf("missing override target")
+		}
+		overrideTarget := args[1]
+		result, err = applySourceOverride(mgr, manifest, src, overrideTarget)
 	}
 	if err != nil {
 		return err

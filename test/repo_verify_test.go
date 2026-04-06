@@ -312,6 +312,9 @@ func TestCLIRepoVerifyHealthyPackage(t *testing.T) {
 
 	// Test: verify should find no issues
 	output, err := runAimgr(t, "repo", "verify")
+	if err != nil {
+		t.Fatalf("repo verify failed: %v", err)
+	}
 
 	if !strings.Contains(output, "No issues found") {
 		t.Errorf("Expected 'No issues found' for healthy package, got: %s", output)
@@ -863,6 +866,9 @@ func TestCLIRepoVerifyHealthyRepo(t *testing.T) {
 
 	// Test: verify should find no issues
 	output, err := runAimgr(t, "repo", "verify")
+	if err != nil {
+		t.Fatalf("repo verify failed: %v", err)
+	}
 
 	if !strings.Contains(output, "No issues found") {
 		t.Errorf("Expected 'No issues found', got: %s", output)
