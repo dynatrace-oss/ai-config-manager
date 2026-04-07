@@ -217,13 +217,10 @@ func createTarGz(t *testing.T, archivePath, fileName string, content []byte, mod
 	if err != nil {
 		t.Fatalf("create archive: %v", err)
 	}
-	defer file.Close()
 
 	gz := gzip.NewWriter(file)
-	defer gz.Close()
 
 	tw := tar.NewWriter(gz)
-	defer tw.Close()
 
 	header := &tar.Header{
 		Name: fileName,
@@ -235,6 +232,15 @@ func createTarGz(t *testing.T, archivePath, fileName string, content []byte, mod
 	}
 	if _, err := tw.Write(content); err != nil {
 		t.Fatalf("write tar content: %v", err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatalf("close tar writer: %v", err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatalf("close gzip writer: %v", err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatalf("close archive file: %v", err)
 	}
 }
 
