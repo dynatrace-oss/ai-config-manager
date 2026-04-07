@@ -22,8 +22,10 @@ builds:
       - -X github.com/dynatrace-oss/ai-config-manager/v3/pkg/version.Version={{.Version}}
       - -X github.com/dynatrace-oss/ai-config-manager/v3/pkg/version.GitCommit={{.ShortCommit}}
       - -X github.com/dynatrace-oss/ai-config-manager/v3/pkg/version.BuildDate={{.Date}}
-  # Windows build omits -s -w to retain debug symbols and avoid
+  # Windows build omits -s -w to retain debug symbols and reduce
   # false-positive detections by Windows Defender / SmartScreen.
+  # IMPORTANT: keep the version-injection ldflags in sync with the
+  # default build above.
   - id: windows
     main: ./cmd/aimgr
     env:
