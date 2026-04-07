@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.7.1] - 2026-04-07
+
+### Changed
+- **Windows installation guidance** — Simplified the documented PowerShell bootstrap command so Windows users run the installer directly from a PowerShell prompt instead of spawning a nested `powershell.exe` process.
+- **Windows release build configuration** — Split Windows builds from Linux/Darwin release ldflags so Windows artifacts retain debug symbols as a precaution against heuristic AV/SmartScreen false positives.
+
+### Fixed
+- **Release bootstrap installer asset resolution** — The shell and PowerShell installers now keep the tagged release path (`vX.Y.Z`) separate from the plain asset filename version (`X.Y.Z`), preventing broken downloads for current releases.
+- **Installer version override compatibility** — `AIMGR_VERSION` now accepts both tagged and plain semantic versions in the bootstrap installers.
+- **Installer regression test lint compliance** — Tightened the installer fixture helper to handle archive writer close errors cleanly so release CI passes again.
+
 ## [3.7.0] - 2026-04-06
 
 ### Added
