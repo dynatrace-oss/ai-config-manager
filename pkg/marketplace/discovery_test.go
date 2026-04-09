@@ -17,6 +17,48 @@ func TestDiscoverMarketplace(t *testing.T) {
 		checkFileName bool   // Whether to check the file name
 	}{
 		{
+			name: "parses direct marketplace file path",
+			setup: func(t *testing.T) string {
+				dir := t.TempDir()
+				marketplaceFile := filepath.Join(dir, "marketplace.json")
+				content := `{
+					"name": "direct-file-marketplace",
+					"description": "Direct file",
+					"plugins": []
+				}`
+				if err := os.WriteFile(marketplaceFile, []byte(content), 0644); err != nil {
+					t.Fatal(err)
+				}
+				return marketplaceFile
+			},
+			expectFound:   true,
+			expectedPath:  "",
+			checkFileName: false,
+		},
+		{
+			name: "parses marketplace file path via subpath",
+			setup: func(t *testing.T) string {
+				dir := t.TempDir()
+				if err := os.MkdirAll(filepath.Join(dir, "nested"), 0755); err != nil {
+					t.Fatal(err)
+				}
+				marketplaceFile := filepath.Join(dir, "nested", "marketplace.json")
+				content := `{
+					"name": "subpath-file-marketplace",
+					"description": "Subpath file",
+					"plugins": []
+				}`
+				if err := os.WriteFile(marketplaceFile, []byte(content), 0644); err != nil {
+					t.Fatal(err)
+				}
+				return dir
+			},
+			subpath:       filepath.Join("nested", "marketplace.json"),
+			expectFound:   true,
+			expectedPath:  "",
+			checkFileName: false,
+		},
+		{
 			name: "finds marketplace.json in .claude-plugin directory",
 			setup: func(t *testing.T) string {
 				dir := t.TempDir()
@@ -37,6 +79,29 @@ func TestDiscoverMarketplace(t *testing.T) {
 			},
 			expectFound:   true,
 			expectedPath:  ".claude-plugin/marketplace.json",
+			checkFileName: true,
+		},
+		{
+			name: "finds marketplace.json in .opencode-plugin directory",
+			setup: func(t *testing.T) string {
+				dir := t.TempDir()
+				opencodePluginDir := filepath.Join(dir, ".opencode-plugin")
+				if err := os.MkdirAll(opencodePluginDir, 0755); err != nil {
+					t.Fatal(err)
+				}
+				marketplaceFile := filepath.Join(opencodePluginDir, "marketplace.json")
+				content := `{
+					"name": "test-marketplace",
+					"description": "Test marketplace",
+					"plugins": []
+				}`
+				if err := os.WriteFile(marketplaceFile, []byte(content), 0644); err != nil {
+					t.Fatal(err)
+				}
+				return dir
+			},
+			expectFound:   true,
+			expectedPath:  ".opencode-plugin/marketplace.json",
 			checkFileName: true,
 		},
 		{
@@ -82,6 +147,41 @@ func TestDiscoverMarketplace(t *testing.T) {
 			checkFileName: true,
 		},
 		{
+			name: "prioritizes .opencode-plugin over root",
+			setup: func(t *testing.T) string {
+				dir := t.TempDir()
+
+				opencodePluginDir := filepath.Join(dir, ".opencode-plugin")
+				if err := os.MkdirAll(opencodePluginDir, 0755); err != nil {
+					t.Fatal(err)
+				}
+				opencodeFile := filepath.Join(opencodePluginDir, "marketplace.json")
+				content1 := `{
+					"name": "opencode-plugin-marketplace",
+					"description": "Opencode plugin marketplace",
+					"plugins": []
+				}`
+				if err := os.WriteFile(opencodeFile, []byte(content1), 0644); err != nil {
+					t.Fatal(err)
+				}
+
+				rootFile := filepath.Join(dir, "marketplace.json")
+				content2 := `{
+					"name": "root-marketplace",
+					"description": "Root marketplace",
+					"plugins": []
+				}`
+				if err := os.WriteFile(rootFile, []byte(content2), 0644); err != nil {
+					t.Fatal(err)
+				}
+
+				return dir
+			},
+			expectFound:   true,
+			expectedPath:  ".opencode-plugin/marketplace.json",
+			checkFileName: true,
+		},
+		{
 			name: "prioritizes .claude-plugin over root",
 			setup: func(t *testing.T) string {
 				dir := t.TempDir()
@@ -114,6 +214,18 @@ func TestDiscoverMarketplace(t *testing.T) {
 			expectFound:   true,
 			expectedPath:  ".claude-plugin/marketplace.json",
 			checkFileName: true,
+		},
+		{
+			name: "returns nil for non-marketplace file path",
+			setup: func(t *testing.T) string {
+				dir := t.TempDir()
+				readme := filepath.Join(dir, "README.md")
+				if err := os.WriteFile(readme, []byte("readme"), 0644); err != nil {
+					t.Fatal(err)
+				}
+				return readme
+			},
+			expectFound: false,
 		},
 		{
 			name: "returns nil when no marketplace.json found",

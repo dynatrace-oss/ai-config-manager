@@ -12,6 +12,9 @@ import (
 
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/discovery"
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/repo"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/repomanifest"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/resource"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/source"
 )
 
 func gitOutput(t *testing.T, dir string, args ...string) string {
@@ -35,6 +38,7 @@ func withRepoAddFlagsReset(t *testing.T, fn func()) {
 	originalFilters := append([]string(nil), filterFlags...)
 	originalFormat := addFormatFlag
 	originalName := nameFlag
+	originalDiscovery := discoveryFlag
 	originalSilent := syncSilentMode
 
 	forceFlag = false
@@ -43,6 +47,7 @@ func withRepoAddFlagsReset(t *testing.T, fn func()) {
 	filterFlags = nil
 	addFormatFlag = "table"
 	nameFlag = ""
+	discoveryFlag = repomanifest.DiscoveryModeAuto
 	syncSilentMode = false
 
 	defer func() {
@@ -52,10 +57,105 @@ func withRepoAddFlagsReset(t *testing.T, fn func()) {
 		filterFlags = originalFilters
 		addFormatFlag = originalFormat
 		nameFlag = originalName
+		discoveryFlag = originalDiscovery
 		syncSilentMode = originalSilent
 	}()
 
 	fn()
+}
+
+func TestRepoAdd_DiscoveryFlagValidation(t *testing.T) {
+	withRepoAddFlagsReset(t, func() {
+		discoveryFlag = "bogus"
+
+		err := repoAddCmd.RunE(repoAddCmd, []string{"local:/tmp"})
+		if err == nil {
+			t.Fatal("expected invalid discovery mode error, got nil")
+		}
+
+		msg := err.Error()
+		if !strings.Contains(msg, "invalid --discovery value") {
+			t.Fatalf("expected CLI discovery validation error, got: %v", err)
+		}
+		for _, mode := range []string{"auto", "marketplace", "generic"} {
+			if !strings.Contains(msg, mode) {
+				t.Fatalf("expected error to list mode %q, got: %v", mode, err)
+			}
+		}
+	})
+}
+
+func TestAddSourceToManifest_PersistsDiscoveryMode(t *testing.T) {
+	repoPath := t.TempDir()
+	t.Setenv("AIMGR_REPO_PATH", repoPath)
+
+	manager := repo.NewManagerWithPath(repoPath)
+	if err := manager.Init(); err != nil {
+		t.Fatalf("failed to init repo: %v", err)
+	}
+
+	srcPath := t.TempDir()
+	parsed, err := source.ParseSource("local:" + srcPath)
+	if err != nil {
+		t.Fatalf("failed to parse source: %v", err)
+	}
+
+	withRepoAddFlagsReset(t, func() {
+		if err := addSourceToManifest(manager, parsed, nil, repomanifest.DiscoveryModeMarketplace); err != nil {
+			t.Fatalf("addSourceToManifest failed: %v", err)
+		}
+	})
+
+	manifest, err := repomanifest.Load(repoPath)
+	if err != nil {
+		t.Fatalf("failed to load manifest: %v", err)
+	}
+	if len(manifest.Sources) != 1 {
+		t.Fatalf("expected 1 source, got %d", len(manifest.Sources))
+	}
+	if manifest.Sources[0].Discovery != repomanifest.DiscoveryModeMarketplace {
+		t.Fatalf("expected discovery %q, got %q", repomanifest.DiscoveryModeMarketplace, manifest.Sources[0].Discovery)
+	}
+}
+
+func TestAddSourceToManifest_StoresNormalizedRepoBackedMarketplaceSource(t *testing.T) {
+	repoPath := t.TempDir()
+	t.Setenv("AIMGR_REPO_PATH", repoPath)
+
+	manager := repo.NewManagerWithPath(repoPath)
+	if err := manager.Init(); err != nil {
+		t.Fatalf("failed to init repo: %v", err)
+	}
+
+	parsed, err := source.ParseSource("https://raw.githubusercontent.com/example/tools/main/.claude-plugin/marketplace.json")
+	if err != nil {
+		t.Fatalf("failed to parse source: %v", err)
+	}
+
+	withRepoAddFlagsReset(t, func() {
+		if err := addSourceToManifest(manager, parsed, nil, repomanifest.DiscoveryModeAuto); err != nil {
+			t.Fatalf("addSourceToManifest failed: %v", err)
+		}
+	})
+
+	manifest, err := repomanifest.Load(repoPath)
+	if err != nil {
+		t.Fatalf("failed to load manifest: %v", err)
+	}
+	if len(manifest.Sources) != 1 {
+		t.Fatalf("expected 1 source, got %d", len(manifest.Sources))
+	}
+
+	src := manifest.Sources[0]
+	if src.URL != "https://github.com/example/tools" {
+		t.Fatalf("source URL = %q, want %q", src.URL, "https://github.com/example/tools")
+	}
+	if src.Ref != "main" {
+		t.Fatalf("source ref = %q, want %q", src.Ref, "main")
+	}
+	if src.Subpath != ".claude-plugin/marketplace.json" {
+		t.Fatalf("source subpath = %q, want %q", src.Subpath, ".claude-plugin/marketplace.json")
+	}
 }
 
 // TestPrintDiscoveryErrors_Deduplication verifies that duplicate errors for the same path are deduplicated
@@ -249,4 +349,587 @@ func TestRepoAdd_ManifestCommitIsScopedToManifestFiles(t *testing.T) {
 	if strings.Contains(manifestCommitFiles, "unrelated.txt") {
 		t.Fatalf("manifest tracking commit must not include unrelated.txt, got:\n%s", manifestCommitFiles)
 	}
+}
+
+func TestImportFromLocalPathWithMode_DiscoveryModes(t *testing.T) {
+	sourceDir := createSourceWithMarketplaceAndLooseResources(t)
+
+	tests := []struct {
+		name              string
+		discoveryMode     string
+		expectLoose       bool
+		expectPlugin      bool
+		expectPackage     bool
+		expectImportError string
+	}{
+		{
+			name:          "auto prefers marketplace only",
+			discoveryMode: repomanifest.DiscoveryModeAuto,
+			expectLoose:   false,
+			expectPlugin:  true,
+			expectPackage: true,
+		},
+		{
+			name:          "marketplace imports marketplace only",
+			discoveryMode: repomanifest.DiscoveryModeMarketplace,
+			expectLoose:   false,
+			expectPlugin:  true,
+			expectPackage: true,
+		},
+		{
+			name:          "generic ignores marketplace",
+			discoveryMode: repomanifest.DiscoveryModeGeneric,
+			expectLoose:   true,
+			expectPlugin:  true,
+			expectPackage: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			withRepoAddFlagsReset(t, func() {
+				repoPath := t.TempDir()
+				manager := repo.NewManagerWithPath(repoPath)
+				if err := manager.Init(); err != nil {
+					t.Fatalf("failed to init repo: %v", err)
+				}
+
+				_, err := importFromLocalPathWithMode(
+					sourceDir,
+					manager,
+					nil,
+					"file://"+sourceDir,
+					string(source.Local),
+					"",
+					"symlink",
+					tt.discoveryMode,
+					"test-source",
+					"src-test",
+				)
+				if tt.expectImportError != "" {
+					if err == nil || !strings.Contains(err.Error(), tt.expectImportError) {
+						t.Fatalf("expected error containing %q, got %v", tt.expectImportError, err)
+					}
+					return
+				}
+				if err != nil {
+					t.Fatalf("import failed: %v", err)
+				}
+
+				loose, _ := manager.Get("loose-command", resource.Command)
+				if tt.expectLoose && loose == nil {
+					t.Fatalf("expected loose-command to be imported")
+				}
+				if !tt.expectLoose && loose != nil {
+					t.Fatalf("expected loose-command to be excluded")
+				}
+
+				plugin, _ := manager.Get("plugin-command", resource.Command)
+				if tt.expectPlugin && plugin == nil {
+					t.Fatalf("expected plugin-command to be imported")
+				}
+				if !tt.expectPlugin && plugin != nil {
+					t.Fatalf("expected plugin-command to be excluded")
+				}
+
+				pkgPath := filepath.Join(repoPath, "packages", "market-plugin.package.json")
+				_, pkgErr := os.Stat(pkgPath)
+				hasPkg := pkgErr == nil
+				if tt.expectPackage && !hasPkg {
+					t.Fatalf("expected marketplace package to exist")
+				}
+				if !tt.expectPackage && hasPkg {
+					t.Fatalf("expected marketplace package to be absent")
+				}
+			})
+		})
+	}
+}
+
+func TestImportFromLocalPathWithMode_MarketplaceRequirementsAndZeroResolvable(t *testing.T) {
+	t.Run("marketplace mode requires marketplace file", func(t *testing.T) {
+		withRepoAddFlagsReset(t, func() {
+			sourceDir := t.TempDir()
+			if err := os.MkdirAll(filepath.Join(sourceDir, "commands"), 0755); err != nil {
+				t.Fatalf("failed to create commands dir: %v", err)
+			}
+			if err := os.WriteFile(filepath.Join(sourceDir, "commands", "just-command.md"), []byte("---\ndescription: only command\n---\n# just-command\n"), 0644); err != nil {
+				t.Fatalf("failed to write command: %v", err)
+			}
+
+			repoPath := t.TempDir()
+			manager := repo.NewManagerWithPath(repoPath)
+			if err := manager.Init(); err != nil {
+				t.Fatalf("failed to init repo: %v", err)
+			}
+
+			_, err := importFromLocalPathWithMode(sourceDir, manager, nil, "file://"+sourceDir, string(source.Local), "", "symlink", repomanifest.DiscoveryModeMarketplace, "test-source", "src-test")
+			if err == nil {
+				t.Fatal("expected marketplace-mode error when marketplace.json is missing")
+			}
+			if !strings.Contains(err.Error(), "requires marketplace.json") {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
+	})
+
+	t.Run("zero-resolvable marketplace errors in auto and marketplace", func(t *testing.T) {
+		sourceDir := createSourceWithMarketplaceNoResolvablePlugins(t)
+
+		for _, mode := range []string{repomanifest.DiscoveryModeAuto, repomanifest.DiscoveryModeMarketplace} {
+			t.Run(mode, func(t *testing.T) {
+				withRepoAddFlagsReset(t, func() {
+					repoPath := t.TempDir()
+					manager := repo.NewManagerWithPath(repoPath)
+					if err := manager.Init(); err != nil {
+						t.Fatalf("failed to init repo: %v", err)
+					}
+
+					_, err := importFromLocalPathWithMode(sourceDir, manager, nil, "file://"+sourceDir, string(source.Local), "", "symlink", mode, "test-source", "src-test")
+					if err == nil {
+						t.Fatalf("expected zero-resolvable error for mode %q", mode)
+					}
+					if !strings.Contains(err.Error(), "no plugin resources were resolvable") {
+						t.Fatalf("unexpected error for mode %q: %v", mode, err)
+					}
+				})
+			})
+		}
+	})
+}
+
+func TestDiscoverImportResourcesByMode_MissingNormalizedMarketplacePath(t *testing.T) {
+	baseDir := t.TempDir()
+	missingMarketplacePath := filepath.Join(baseDir, ".missing", "marketplace.json")
+
+	for _, mode := range []string{repomanifest.DiscoveryModeAuto, repomanifest.DiscoveryModeMarketplace} {
+		t.Run(mode, func(t *testing.T) {
+			_, err := discoverImportResourcesByMode(missingMarketplacePath, mode)
+			if err == nil {
+				t.Fatalf("expected missing normalized marketplace path error for mode %q", mode)
+			}
+
+			errMsg := err.Error()
+			if !strings.Contains(errMsg, "marketplace.json/subpath lookup failed") {
+				t.Fatalf("expected marketplace lookup error for mode %q, got: %v", mode, err)
+			}
+			if !strings.Contains(errMsg, missingMarketplacePath) {
+				t.Fatalf("expected error to mention normalized path %q, got: %v", missingMarketplacePath, err)
+			}
+			if strings.Contains(errMsg, "failed to discover commands") {
+				t.Fatalf("expected failure before generic discovery for mode %q, got: %v", mode, err)
+			}
+		})
+	}
+}
+
+func TestAddBulkFromLocalWithMode_DirectMarketplaceFileInput(t *testing.T) {
+	withRepoAddFlagsReset(t, func() {
+		sourceDir := createSourceWithMarketplaceAndLooseResources(t)
+		marketplaceFile := filepath.Join(sourceDir, "marketplace.json")
+
+		repoPath := t.TempDir()
+		manager := repo.NewManagerWithPath(repoPath)
+		if err := manager.Init(); err != nil {
+			t.Fatalf("failed to init repo: %v", err)
+		}
+
+		discoveryFlag = repomanifest.DiscoveryModeAuto
+		if err := addBulkFromLocalWithMode(marketplaceFile, manager, nil, "src-local-file", "symlink", "file-source"); err != nil {
+			t.Fatalf("addBulkFromLocalWithMode failed for direct marketplace file: %v", err)
+		}
+
+		plugin, _ := manager.Get("plugin-command", resource.Command)
+		if plugin == nil {
+			t.Fatal("expected plugin-command to be imported from direct marketplace file")
+		}
+
+		loose, _ := manager.Get("loose-command", resource.Command)
+		if loose != nil {
+			t.Fatal("expected loose-command to remain excluded in auto marketplace mode")
+		}
+	})
+}
+
+func TestImportFromLocalPathWithMode_RepoMarketplaceSubpathFileInput(t *testing.T) {
+	withRepoAddFlagsReset(t, func() {
+		sourceDir := createSourceWithMarketplaceAndLooseResources(t)
+		marketplaceFile := filepath.Join(sourceDir, "marketplace.json")
+
+		repoPath := t.TempDir()
+		manager := repo.NewManagerWithPath(repoPath)
+		if err := manager.Init(); err != nil {
+			t.Fatalf("failed to init repo: %v", err)
+		}
+
+		// Simulate remote clone + subpath resolution ending in marketplace.json.
+		_, err := importFromLocalPathWithMode(
+			marketplaceFile,
+			manager,
+			nil,
+			"https://github.com/example/repo",
+			"github",
+			"main",
+			"copy",
+			repomanifest.DiscoveryModeAuto,
+			"remote-file-source",
+			"src-remote-file",
+		)
+		if err != nil {
+			t.Fatalf("importFromLocalPathWithMode failed for repo marketplace subpath file: %v", err)
+		}
+
+		plugin, _ := manager.Get("plugin-command", resource.Command)
+		if plugin == nil {
+			t.Fatal("expected plugin-command to be imported from subpath marketplace file")
+		}
+	})
+}
+
+func createSourceWithPluginDirectoryMarketplace(t *testing.T, marketplaceDirectory string) string {
+	t.Helper()
+
+	sourceDir := t.TempDir()
+
+	if err := os.MkdirAll(filepath.Join(sourceDir, "commands"), 0755); err != nil {
+		t.Fatalf("failed to create loose commands dir: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(sourceDir, "plugins", "dt-github", "commands"), 0755); err != nil {
+		t.Fatalf("failed to create plugin commands dir: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(sourceDir, marketplaceDirectory), 0755); err != nil {
+		t.Fatalf("failed to create marketplace dir: %v", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(sourceDir, "commands", "loose-command.md"), []byte("---\ndescription: loose\n---\n# loose-command\n"), 0644); err != nil {
+		t.Fatalf("failed to write loose command: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceDir, "plugins", "dt-github", "commands", "plugin-command.md"), []byte("---\ndescription: plugin\n---\n# plugin-command\n"), 0644); err != nil {
+		t.Fatalf("failed to write plugin command: %v", err)
+	}
+
+	marketplaceContent := `{
+		"name": "plugin-manifest",
+		"description": "plugin dir manifest",
+		"plugins": [
+			{
+				"name": "dt-github",
+				"description": "test plugin",
+				"source": "plugins/dt-github"
+			}
+		]
+	}`
+	if err := os.WriteFile(filepath.Join(sourceDir, marketplaceDirectory, "marketplace.json"), []byte(marketplaceContent), 0644); err != nil {
+		t.Fatalf("failed to write marketplace.json: %v", err)
+	}
+
+	return sourceDir
+}
+
+func TestAddBulkFromLocalWithMode_DirectPluginDirectoryMarketplaceFileInput(t *testing.T) {
+	withRepoAddFlagsReset(t, func() {
+		tests := []struct {
+			name                 string
+			marketplaceDirectory string
+		}{
+			{name: "claude-plugin manifest", marketplaceDirectory: ".claude-plugin"},
+			{name: "opencode-plugin manifest", marketplaceDirectory: ".opencode-plugin"},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				sourceDir := createSourceWithPluginDirectoryMarketplace(t, tt.marketplaceDirectory)
+				marketplaceFile := filepath.Join(sourceDir, tt.marketplaceDirectory, "marketplace.json")
+
+				repoPath := t.TempDir()
+				manager := repo.NewManagerWithPath(repoPath)
+				if err := manager.Init(); err != nil {
+					t.Fatalf("failed to init repo: %v", err)
+				}
+
+				discoveryFlag = repomanifest.DiscoveryModeAuto
+				if err := addBulkFromLocalWithMode(marketplaceFile, manager, nil, "src-local-file", "symlink", "file-source"); err != nil {
+					t.Fatalf("addBulkFromLocalWithMode failed for direct plugin-dir marketplace file: %v", err)
+				}
+
+				plugin, _ := manager.Get("plugin-command", resource.Command)
+				if plugin == nil {
+					t.Fatal("expected plugin-command to be imported from direct plugin-dir marketplace file")
+				}
+
+				loose, _ := manager.Get("loose-command", resource.Command)
+				if loose != nil {
+					t.Fatal("expected loose-command to remain excluded in auto marketplace mode")
+				}
+			})
+		}
+	})
+}
+
+func TestImportFromLocalPathWithMode_RepoPluginDirectoryMarketplaceSubpathFileInput(t *testing.T) {
+	withRepoAddFlagsReset(t, func() {
+		tests := []struct {
+			name                 string
+			marketplaceDirectory string
+			subpath              string
+		}{
+			{name: "claude-plugin manifest", marketplaceDirectory: ".claude-plugin", subpath: ".claude-plugin/marketplace.json"},
+			{name: "opencode-plugin manifest", marketplaceDirectory: ".opencode-plugin", subpath: ".opencode-plugin/marketplace.json"},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				sourceDir := createSourceWithPluginDirectoryMarketplace(t, tt.marketplaceDirectory)
+				marketplaceFile := filepath.Join(sourceDir, tt.marketplaceDirectory, "marketplace.json")
+
+				repoPath := t.TempDir()
+				manager := repo.NewManagerWithPath(repoPath)
+				if err := manager.Init(); err != nil {
+					t.Fatalf("failed to init repo: %v", err)
+				}
+
+				_, err := importFromLocalPathWithMode(
+					marketplaceFile,
+					manager,
+					nil,
+					"https://github.com/example/repo",
+					"github",
+					"main",
+					"copy",
+					repomanifest.DiscoveryModeAuto,
+					"remote-file-source",
+					"src-remote-file",
+				)
+				if err != nil {
+					t.Fatalf("importFromLocalPathWithMode failed for repo plugin-dir marketplace subpath file (%s): %v", tt.subpath, err)
+				}
+
+				plugin, _ := manager.Get("plugin-command", resource.Command)
+				if plugin == nil {
+					t.Fatal("expected plugin-command to be imported from plugin-dir subpath marketplace file")
+				}
+
+				loose, _ := manager.Get("loose-command", resource.Command)
+				if loose != nil {
+					t.Fatal("expected loose-command to remain excluded in auto marketplace mode")
+				}
+			})
+		}
+	})
+}
+
+func TestMarketplaceSourceBasePath(t *testing.T) {
+	tests := []struct {
+		name            string
+		localPath       string
+		marketplacePath string
+		want            string
+	}{
+		{
+			name:            "directory discovery at repo root",
+			localPath:       "/tmp/repo",
+			marketplacePath: "/tmp/repo/.claude-plugin/marketplace.json",
+			want:            "/tmp/repo",
+		},
+		{
+			name:            "directory discovery in subpath",
+			localPath:       "/tmp/repo/subdir",
+			marketplacePath: "/tmp/repo/subdir/.opencode-plugin/marketplace.json",
+			want:            "/tmp/repo/subdir",
+		},
+		{
+			name:            "direct file path import",
+			localPath:       "/tmp/repo/.claude-plugin/marketplace.json",
+			marketplacePath: "/tmp/repo/.claude-plugin/marketplace.json",
+			want:            "/tmp/repo",
+		},
+		{
+			name:            "direct root marketplace file import",
+			localPath:       "/tmp/repo/marketplace.json",
+			marketplacePath: "/tmp/repo/marketplace.json",
+			want:            "/tmp/repo",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := marketplaceSourceBasePath(tt.localPath, tt.marketplacePath)
+			if got != tt.want {
+				t.Fatalf("marketplaceSourceBasePath() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestImportFromLocalPathWithMode_PluginDirectoryMarketplaceUsesRepoRootBase(t *testing.T) {
+	withRepoAddFlagsReset(t, func() {
+		tests := []struct {
+			name                 string
+			marketplaceDirectory string
+		}{
+			{name: "claude-plugin manifest", marketplaceDirectory: ".claude-plugin"},
+			{name: "opencode-plugin manifest", marketplaceDirectory: ".opencode-plugin"},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				sourceDir := t.TempDir()
+
+				if err := os.MkdirAll(filepath.Join(sourceDir, "commands"), 0755); err != nil {
+					t.Fatalf("failed to create loose commands dir: %v", err)
+				}
+				if err := os.MkdirAll(filepath.Join(sourceDir, "plugins", "dt-github", "commands"), 0755); err != nil {
+					t.Fatalf("failed to create plugin commands dir: %v", err)
+				}
+				if err := os.MkdirAll(filepath.Join(sourceDir, tt.marketplaceDirectory), 0755); err != nil {
+					t.Fatalf("failed to create marketplace dir: %v", err)
+				}
+
+				if err := os.WriteFile(filepath.Join(sourceDir, "commands", "loose-command.md"), []byte("---\ndescription: loose\n---\n# loose-command\n"), 0644); err != nil {
+					t.Fatalf("failed to write loose command: %v", err)
+				}
+				if err := os.WriteFile(filepath.Join(sourceDir, "plugins", "dt-github", "commands", "plugin-command.md"), []byte("---\ndescription: plugin\n---\n# plugin-command\n"), 0644); err != nil {
+					t.Fatalf("failed to write plugin command: %v", err)
+				}
+
+				marketplaceContent := `{
+					"name": "plugin-manifest",
+					"description": "plugin dir manifest",
+					"plugins": [
+						{
+							"name": "dt-github",
+							"description": "test plugin",
+							"source": "plugins/dt-github"
+						}
+					]
+				}`
+				if err := os.WriteFile(filepath.Join(sourceDir, tt.marketplaceDirectory, "marketplace.json"), []byte(marketplaceContent), 0644); err != nil {
+					t.Fatalf("failed to write marketplace.json: %v", err)
+				}
+
+				repoPath := t.TempDir()
+				manager := repo.NewManagerWithPath(repoPath)
+				if err := manager.Init(); err != nil {
+					t.Fatalf("failed to init repo: %v", err)
+				}
+
+				_, err := importFromLocalPathWithMode(
+					sourceDir,
+					manager,
+					nil,
+					"file://"+sourceDir,
+					string(source.Local),
+					"",
+					"symlink",
+					repomanifest.DiscoveryModeMarketplace,
+					"test-source",
+					"src-test",
+				)
+				if err != nil {
+					t.Fatalf("importFromLocalPathWithMode failed: %v", err)
+				}
+
+				plugin, _ := manager.Get("plugin-command", resource.Command)
+				if plugin == nil {
+					t.Fatal("expected plugin-command to be imported from plugin source")
+				}
+
+				loose, _ := manager.Get("loose-command", resource.Command)
+				if loose != nil {
+					t.Fatal("expected loose command to remain excluded in marketplace mode")
+				}
+			})
+		}
+	})
+}
+
+func TestImportFromLocalPathWithMode_MarketplaceImportsReferencedDotAgentFiles(t *testing.T) {
+	withRepoAddFlagsReset(t, func() {
+		sourceDir := t.TempDir()
+
+		if err := os.MkdirAll(filepath.Join(sourceDir, "plugins", "dt-service-onboarding", "commands"), 0755); err != nil {
+			t.Fatalf("failed to create plugin commands dir: %v", err)
+		}
+		if err := os.MkdirAll(filepath.Join(sourceDir, "plugins", "dt-service-onboarding", "agents"), 0755); err != nil {
+			t.Fatalf("failed to create plugin agents dir: %v", err)
+		}
+
+		commandContent := "---\ndescription: onboarding command\n---\n# dt-onboarding\n"
+		if err := os.WriteFile(filepath.Join(sourceDir, "plugins", "dt-service-onboarding", "commands", "dt-onboarding.md"), []byte(commandContent), 0644); err != nil {
+			t.Fatalf("failed to write command: %v", err)
+		}
+
+		agentContent := "---\ndescription: onboarding agent\ntype: onboarding\n---\n# onboarding\n"
+		if err := os.WriteFile(filepath.Join(sourceDir, "plugins", "dt-service-onboarding", "agents", "dt-service-onboarding.agent.md"), []byte(agentContent), 0644); err != nil {
+			t.Fatalf("failed to write agent: %v", err)
+		}
+
+		marketplaceContent := `{
+			"name": "agent-marketplace",
+			"description": "marketplace with agent references",
+			"plugins": [
+				{
+					"name": "dt-service-onboarding",
+					"description": "plugin with command + agent",
+					"source": "plugins/dt-service-onboarding"
+				}
+			]
+		}`
+		if err := os.WriteFile(filepath.Join(sourceDir, "marketplace.json"), []byte(marketplaceContent), 0644); err != nil {
+			t.Fatalf("failed to write marketplace.json: %v", err)
+		}
+
+		repoPath := t.TempDir()
+		manager := repo.NewManagerWithPath(repoPath)
+		if err := manager.Init(); err != nil {
+			t.Fatalf("failed to init repo: %v", err)
+		}
+
+		_, err := importFromLocalPathWithMode(
+			sourceDir,
+			manager,
+			nil,
+			"file://"+sourceDir,
+			string(source.Local),
+			"",
+			"symlink",
+			repomanifest.DiscoveryModeMarketplace,
+			"test-source",
+			"src-test",
+		)
+		if err != nil {
+			t.Fatalf("importFromLocalPathWithMode failed: %v", err)
+		}
+
+		agent, _ := manager.Get("dt-service-onboarding", resource.Agent)
+		if agent == nil {
+			t.Fatal("expected referenced agent to be imported")
+		}
+
+		pkgPath := filepath.Join(repoPath, "packages", "dt-service-onboarding.package.json")
+		pkg, err := resource.LoadPackage(pkgPath)
+		if err != nil {
+			t.Fatalf("failed to load generated marketplace package: %v", err)
+		}
+
+		foundAgentRef := false
+		for _, ref := range pkg.Resources {
+			if ref == "agent/dt-service-onboarding" {
+				foundAgentRef = true
+				break
+			}
+		}
+		if !foundAgentRef {
+			t.Fatalf("expected package to reference imported agent, resources: %v", pkg.Resources)
+		}
+
+		index, err := repo.BuildPackageReferenceIndexFromRoots([]string{repoPath})
+		if err != nil {
+			t.Fatalf("failed to build package reference index: %v", err)
+		}
+		issues := repo.ValidatePackageReferences(pkg, index)
+		if len(issues) != 0 {
+			t.Fatalf("expected no missing references in generated package, got: %#v", issues)
+		}
+	})
 }

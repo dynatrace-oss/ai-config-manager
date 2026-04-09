@@ -1259,6 +1259,78 @@ func TestSourceInclude_SaveRoundtrip(t *testing.T) {
 	}
 }
 
+func TestSourceDiscovery_SaveRoundtripAndDefaulting(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	original := &Manifest{
+		Version: 1,
+		Sources: []*Source{
+			{
+				Name:      "marketplace-source",
+				URL:       "https://github.com/user/repo",
+				Discovery: DiscoveryModeMarketplace,
+			},
+			{
+				Name: "legacy-source",
+				Path: "/tmp/legacy",
+				// Discovery intentionally omitted to verify defaulting to auto.
+			},
+		},
+	}
+
+	if err := original.Save(tmpDir); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	raw, err := os.ReadFile(filepath.Join(tmpDir, ManifestFileName))
+	if err != nil {
+		t.Fatalf("failed to read manifest: %v", err)
+	}
+	rawText := string(raw)
+	if !strings.Contains(rawText, "discovery: marketplace") {
+		t.Fatalf("expected discovery field for explicit mode, manifest:\n%s", rawText)
+	}
+
+	loaded, err := Load(tmpDir)
+	if err != nil {
+		t.Fatalf("Load() after Save() error = %v", err)
+	}
+	if len(loaded.Sources) != 2 {
+		t.Fatalf("expected 2 sources, got %d", len(loaded.Sources))
+	}
+
+	if loaded.Sources[0].Discovery != DiscoveryModeMarketplace {
+		t.Fatalf("expected discovery %q, got %q", DiscoveryModeMarketplace, loaded.Sources[0].Discovery)
+	}
+	if loaded.Sources[1].Discovery != DiscoveryModeAuto {
+		t.Fatalf("expected missing discovery to default to %q, got %q", DiscoveryModeAuto, loaded.Sources[1].Discovery)
+	}
+}
+
+func TestSourceDiscovery_LoadLegacyDefaultsToAuto(t *testing.T) {
+	tmpDir := t.TempDir()
+	content := `version: 1
+sources:
+  - name: legacy-source
+    url: https://github.com/user/repo`
+
+	path := filepath.Join(tmpDir, ManifestFileName)
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write manifest: %v", err)
+	}
+
+	loaded, err := Load(tmpDir)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if len(loaded.Sources) != 1 {
+		t.Fatalf("expected 1 source, got %d", len(loaded.Sources))
+	}
+	if loaded.Sources[0].Discovery != DiscoveryModeAuto {
+		t.Fatalf("expected legacy discovery default %q, got %q", DiscoveryModeAuto, loaded.Sources[0].Discovery)
+	}
+}
+
 func TestValidateSource_Include(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -1333,6 +1405,68 @@ func TestValidateSource_Include(t *testing.T) {
 				Name:    "test",
 				URL:     "https://github.com/user/repo",
 				Include: []string{"skill/pdf*", "command/[bad"},
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateSource(tt.source)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateSource() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestValidateSource_Discovery(t *testing.T) {
+	tests := []struct {
+		name    string
+		source  *Source
+		wantErr bool
+	}{
+		{
+			name: "valid explicit auto",
+			source: &Source{
+				Name:      "test",
+				Path:      "/test",
+				Discovery: DiscoveryModeAuto,
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid marketplace",
+			source: &Source{
+				Name:      "test",
+				URL:       "https://github.com/user/repo",
+				Discovery: DiscoveryModeMarketplace,
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid generic",
+			source: &Source{
+				Name:      "test",
+				URL:       "https://github.com/user/repo",
+				Discovery: DiscoveryModeGeneric,
+			},
+			wantErr: false,
+		},
+		{
+			name: "missing defaults to auto",
+			source: &Source{
+				Name: "test",
+				Path: "/test",
+			},
+			wantErr: false,
+		},
+		{
+			name: "invalid discovery",
+			source: &Source{
+				Name:      "test",
+				Path:      "/test",
+				Discovery: "bogus",
 			},
 			wantErr: true,
 		},

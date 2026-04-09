@@ -13,13 +13,16 @@ Every source requires an **explicit prefix or scheme**. There is no implicit for
 | Format | Example | Type |
 |--------|---------|------|
 | `gh:owner/repo` | `gh:my-org/ai-tools` | GitHub |
+| `gh:owner/repo/path/to/marketplace.json` | `gh:my-org/ai-tools/.claude-plugin/marketplace.json` | GitHub marketplace file |
 | `gh:owner/repo@ref` | `gh:my-org/ai-tools@v1.0.0` | GitHub (pinned) |
 | `gh:owner/repo@ref/path` | `gh:my-org/ai-tools@main/skills` | GitHub (subpath) |
 | `https://host/path` | `https://github.com/owner/repo` | HTTPS Git URL |
 | `https://host/repo.git/path` | `https://git.example.com/scm/proj/repo.git/skills` | HTTPS + subpath |
+| `https://host/repo.git/path/to/marketplace.json` | `https://github.com/owner/repo.git/.claude-plugin/marketplace.json` | HTTPS marketplace file |
 | `http://host/path` | `http://git.internal.com/owner/repo` | HTTP Git URL |
 | `git@host:owner/repo.git` | `git@github.com:owner/repo.git` | SSH Git URL |
 | `local:path` | `local:./my-resources` | Local directory |
+| `local:path/to/marketplace.json` | `local:./.claude-plugin/marketplace.json` | Local marketplace file |
 
 ### GitHub Shorthand (`gh:`)
 
@@ -621,6 +624,10 @@ For each source in `ai.repo.yaml`:
 - **Path sources**: Re-create symlinks to source files
 - **URL sources**: Download latest version, copy to repository
 
+`repo sync` also reuses each source's persisted `sources[].discovery` mode from
+`ai.repo.yaml` (set by `repo add --discovery`). This preserves marketplace-first
+(`auto`) vs `marketplace` vs `generic` behavior on every sync.
+
 ### When to Sync
 
 - After upstream changes to remote repositories
@@ -713,7 +720,38 @@ aimgr repo add <source> [flags]
 | `--force` | Overwrite existing resources |
 | `--skip-existing` | Skip existing resources |
 | `--dry-run` | Preview without importing |
+| `--discovery=<mode>` | Discovery mode: `auto`, `marketplace`, `generic` |
 | `--format=<format>` | Output format |
+
+### Discovery modes (`repo add`)
+
+`repo add` supports three discovery modes:
+
+- `auto` (default): marketplace-first. If `marketplace.json` exists, import marketplace-defined plugin resources and generated packages. If not, fall back to generic discovery.
+- `marketplace`: require `marketplace.json`; fail if not found.
+- `generic`: ignore `marketplace.json`; only import generic commands/skills/agents/packages.
+
+```bash
+# Default marketplace-first behavior
+aimgr repo add local:~/dev/team-resources
+
+# Force generic discovery
+aimgr repo add local:~/dev/team-resources --discovery generic
+
+# Require marketplace discovery
+aimgr repo add local:~/dev/team-resources --discovery marketplace
+```
+
+You can also point directly at marketplace manifests:
+
+```bash
+# Direct local marketplace file
+aimgr repo add local:/home/user/repo/.claude-plugin/marketplace.json
+
+# Repo-backed remote marketplace file URL
+aimgr repo add gh:owner/repo/.claude-plugin/marketplace.json
+aimgr repo add https://github.com/owner/repo.git/.claude-plugin/marketplace.json
+```
 
 ### repo sync
 

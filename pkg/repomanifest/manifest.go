@@ -24,6 +24,11 @@ var (
 const (
 	// ManifestFileName is the default name for repository manifest files
 	ManifestFileName = "ai.repo.yaml"
+
+	// Discovery modes for source import behavior.
+	DiscoveryModeAuto        = "auto"
+	DiscoveryModeMarketplace = "marketplace"
+	DiscoveryModeGeneric     = "generic"
 )
 
 // Manifest represents the ai.repo.yaml file that tracks synced sources
@@ -34,13 +39,16 @@ type Manifest struct {
 
 // Source represents a single synced source in the repository
 type Source struct {
-	ID      string   `yaml:"id,omitempty"`
-	Name    string   `yaml:"name"`
-	Path    string   `yaml:"path,omitempty"`
-	URL     string   `yaml:"url,omitempty"`
-	Ref     string   `yaml:"ref,omitempty"`
-	Subpath string   `yaml:"subpath,omitempty"`
-	Include []string `yaml:"include,omitempty"`
+	ID      string `yaml:"id,omitempty"`
+	Name    string `yaml:"name"`
+	Path    string `yaml:"path,omitempty"`
+	URL     string `yaml:"url,omitempty"`
+	Ref     string `yaml:"ref,omitempty"`
+	Subpath string `yaml:"subpath,omitempty"`
+	// Discovery controls how import discovery is selected for this source.
+	// Missing values default to "auto" for backward compatibility.
+	Discovery string   `yaml:"discovery,omitempty"`
+	Include   []string `yaml:"include,omitempty"`
 
 	// Override breadcrumbs are runtime-only on Source and persisted locally in
 	// .metadata/sources.json (not in shareable ai.repo.yaml output).
@@ -53,12 +61,13 @@ type Source struct {
 // Local-only runtime state (ID) is intentionally omitted.
 func (s *Source) MarshalYAML() (interface{}, error) {
 	type sourceYAML struct {
-		Name    string   `yaml:"name"`
-		Path    string   `yaml:"path,omitempty"`
-		URL     string   `yaml:"url,omitempty"`
-		Ref     string   `yaml:"ref,omitempty"`
-		Subpath string   `yaml:"subpath,omitempty"`
-		Include []string `yaml:"include,omitempty"`
+		Name      string   `yaml:"name"`
+		Path      string   `yaml:"path,omitempty"`
+		URL       string   `yaml:"url,omitempty"`
+		Ref       string   `yaml:"ref,omitempty"`
+		Subpath   string   `yaml:"subpath,omitempty"`
+		Discovery string   `yaml:"discovery,omitempty"`
+		Include   []string `yaml:"include,omitempty"`
 	}
 
 	if s == nil {
@@ -66,12 +75,13 @@ func (s *Source) MarshalYAML() (interface{}, error) {
 	}
 
 	return sourceYAML{
-		Name:    s.Name,
-		Path:    s.Path,
-		URL:     s.URL,
-		Ref:     s.Ref,
-		Subpath: s.Subpath,
-		Include: s.Include,
+		Name:      s.Name,
+		Path:      s.Path,
+		URL:       s.URL,
+		Ref:       s.Ref,
+		Subpath:   s.Subpath,
+		Discovery: normalizeDiscoveryMode(s.Discovery),
+		Include:   s.Include,
 	}, nil
 }
 
@@ -119,6 +129,7 @@ func Load(repoPath string) (*Manifest, error) {
 	// Ensure every source has an in-memory runtime ID. IDs are local-only state
 	// derived from URL/path and are intentionally not persisted in ai.repo.yaml.
 	m.migrateSourceIDs()
+	m.migrateDiscoveryDefaults()
 
 	// Validate the manifest
 	if err := m.Validate(); err != nil {
@@ -126,6 +137,17 @@ func Load(repoPath string) (*Manifest, error) {
 	}
 
 	return &m, nil
+}
+
+// NormalizeDiscoveryMode returns the effective discovery mode.
+// Empty values are treated as "auto" for backward compatibility.
+func NormalizeDiscoveryMode(mode string) string {
+	return normalizeDiscoveryMode(mode)
+}
+
+// ValidateDiscoveryMode validates one discovery mode value.
+func ValidateDiscoveryMode(mode string) error {
+	return validateDiscoveryMode(mode)
 }
 
 // LoadForMutation loads a manifest and applies legacy migration writes when needed.
@@ -338,6 +360,11 @@ func validateSource(source *Source) error {
 		return fmt.Errorf("invalid source name '%s': must be lowercase alphanumeric with hyphens, 1-64 chars", source.Name)
 	}
 
+	source.Discovery = normalizeDiscoveryMode(source.Discovery)
+	if err := validateDiscoveryMode(source.Discovery); err != nil {
+		return err
+	}
+
 	hasOverrideBreadcrumbs := source.OverrideOriginalURL != "" || source.OverrideOriginalRef != "" || source.OverrideOriginalSubpath != ""
 
 	if hasOverrideBreadcrumbs {
@@ -370,6 +397,23 @@ func validateSource(source *Source) error {
 	}
 
 	return nil
+}
+
+func normalizeDiscoveryMode(mode string) string {
+	if mode == "" {
+		return DiscoveryModeAuto
+	}
+	return mode
+}
+
+func validateDiscoveryMode(mode string) error {
+	mode = normalizeDiscoveryMode(mode)
+	switch mode {
+	case DiscoveryModeAuto, DiscoveryModeMarketplace, DiscoveryModeGeneric:
+		return nil
+	default:
+		return fmt.Errorf("invalid discovery mode %q: supported modes are %s, %s, %s", mode, DiscoveryModeAuto, DiscoveryModeMarketplace, DiscoveryModeGeneric)
+	}
 }
 
 // isValidSourceName validates source name follows agentskills.io naming rules
@@ -466,6 +510,15 @@ func (m *Manifest) migrateSourceIDs() bool {
 		}
 	}
 	return migrated
+}
+
+func (m *Manifest) migrateDiscoveryDefaults() {
+	for i := range m.Sources {
+		if m.Sources[i] == nil {
+			continue
+		}
+		m.Sources[i].Discovery = normalizeDiscoveryMode(m.Sources[i].Discovery)
+	}
 }
 
 // migrateIfNeeded migrates old manifest format to new format

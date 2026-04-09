@@ -31,6 +31,7 @@ var (
 	filterFlags      []string
 	addFormatFlag    string
 	nameFlag         string
+	discoveryFlag    string
 
 	// syncSilentMode suppresses all fmt.Printf output in importFromLocalPathWithMode
 	// and printImportResults. Set to true by runSync() to collect results silently.
@@ -43,9 +44,14 @@ var repoAddCmd = &cobra.Command{
 	Short: "Add resources to the repository",
 	Long: `Add resources to the aimgr repository.
 
-This command auto-discovers and adds all resources (commands, skills, agents, packages)
-from the specified source location. It also automatically detects and adds marketplace.json
-files if present.
+This command auto-discovers and adds resources (commands, skills, agents, packages)
+from the specified source location.
+
+Discovery modes:
+  auto (default)         Marketplace-first: use marketplace.json when present,
+                         otherwise fall back to generic command/skill/agent/package discovery
+  marketplace            Require marketplace.json and import plugin-defined resources/packages
+  generic                Ignore marketplace.json and only run generic discovery
 
 Source Formats:
   GitHub (shorthand):
@@ -69,9 +75,10 @@ Source Formats:
     git@gitlab.com:owner/repo.git        GitLab SSH
     git@bitbucket.org:owner/repo.git     Bitbucket SSH
 
-  Local directory:
+  Local source:
     local:./relative/path      Relative path (symlinked)
     local:/absolute/path       Absolute path (symlinked)
+    local:./.claude-plugin/marketplace.json  Direct local marketplace file
 
 Commands are single .md files with YAML frontmatter.
 Skills are directories containing a SKILL.md file.
@@ -98,15 +105,24 @@ Examples:
   aimgr repo add git@github.com:owner/repo.git
   aimgr repo add git@bitbucket.org:org/repo.git
 
-  # Add from local directory
+  # Add from local directory (auto = marketplace-first)
   aimgr repo add local:/home/user/.opencode/
   aimgr repo add local:./my-resources/
+
+  # Add from a direct local marketplace file
+  aimgr repo add local:/home/user/rnd-ai-knowledgebase/.claude-plugin/marketplace.json
+
+  # Add from a repo-backed remote marketplace file URL
+  aimgr repo add gh:owner/repo/.claude-plugin/marketplace.json
+  aimgr repo add https://github.com/owner/repo.git/.claude-plugin/marketplace.json
 
   # With options
   aimgr repo add gh:owner/repo --force
   aimgr repo add gh:owner/repo --skip-existing
   aimgr repo add gh:owner/repo --dry-run
   aimgr repo add gh:owner/repo --name=my-custom-name
+  aimgr repo add gh:owner/repo --discovery generic
+  aimgr repo add local:/path/to/repo --discovery marketplace
 
   # Filter resources to import (repeatable, OR logic):
   aimgr repo add gh:owner/repo --filter skill/pdf --filter skill/docx
@@ -129,11 +145,13 @@ Source formats:
   https://host/path/repo.git/subpath           HTTPS with subpath
   git@host:owner/repo.git                      SSH
   local:./path                                 Local directory
+  local:./.claude-plugin/marketplace.json      Local marketplace file
 
 Examples:
   aimgr repo add gh:my-org/ai-tools
   aimgr repo add https://bitbucket.example.com/scm/TEAM/repo.git/skills
   aimgr repo add local:./my-resources
+  aimgr repo add gh:owner/repo/.claude-plugin/marketplace.json
 
 Run 'aimgr repo add --help' for full documentation`)
 		}
@@ -144,6 +162,10 @@ Run 'aimgr repo add --help' for full documentation`)
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		sourceInput := args[0]
+
+		if err := repomanifest.ValidateDiscoveryMode(discoveryFlag); err != nil {
+			return fmt.Errorf("invalid --discovery value: %w", err)
+		}
 
 		// Parse source
 		parsed, err := source.ParseSource(sourceInput)
@@ -200,7 +222,7 @@ Run 'aimgr repo add --help' for full documentation`)
 		}
 
 		// Add source to manifest after successful add
-		if err := addSourceToManifest(manager, parsed, filterFlags); err != nil {
+		if err := addSourceToManifest(manager, parsed, filterFlags, discoveryFlag); err != nil {
 			// Don't fail the entire operation if manifest tracking fails
 			fmt.Fprintf(os.Stderr, "Warning: Failed to track source in manifest: %v\n", err)
 		} else {
@@ -228,6 +250,7 @@ func init() {
 	repoAddCmd.Flags().StringArrayVar(&filterFlags, "filter", nil, "Filter resources by pattern, repeatable (e.g., --filter skill/pdf --filter 'skill/web*')")
 	repoAddCmd.Flags().StringVar(&addFormatFlag, "format", "table", "Output format: table, json, yaml")
 	repoAddCmd.Flags().StringVar(&nameFlag, "name", "", "Override auto-generated source name")
+	repoAddCmd.Flags().StringVar(&discoveryFlag, "discovery", repomanifest.DiscoveryModeAuto, "Discovery mode: auto, marketplace, generic")
 	_ = repoAddCmd.RegisterFlagCompletionFunc("format", completeFormatFlag)
 }
 
@@ -382,6 +405,165 @@ func applyFilter(filterPatterns []string, commands, skills, agents []*resource.R
 	return filteredCommands, filteredSkills, filteredAgents, filteredPackages, nil
 }
 
+type discoveredImportResources struct {
+	commands            []*resource.Resource
+	skills              []*resource.Resource
+	agents              []*resource.Resource
+	packages            []*resource.Package
+	discoveryErrors     []discovery.DiscoveryError
+	marketplaceConfig   *marketplace.MarketplaceConfig
+	marketplacePath     string
+	marketplacePackages []*marketplace.PackageInfo
+}
+
+func ensureNormalizedMarketplacePathExists(localPath string) error {
+	cleanPath := filepath.Clean(localPath)
+	if filepath.Base(cleanPath) != "marketplace.json" {
+		return nil
+	}
+
+	if _, err := os.Stat(cleanPath); err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("marketplace.json/subpath lookup failed: normalized path %q does not exist", cleanPath)
+		}
+		return fmt.Errorf("marketplace.json/subpath lookup failed at normalized path %q: %w", cleanPath, err)
+	}
+
+	return nil
+}
+
+func marketplaceSourceBasePath(localPath, marketplacePath string) string {
+	cleanLocalPath := filepath.Clean(localPath)
+	cleanMarketplacePath := filepath.Clean(marketplacePath)
+
+	// Direct file imports (local file path input or repo subpath that points
+	// directly to marketplace.json) generally resolve relative to the manifest
+	// directory for backwards compatibility.
+	//
+	// However, plugin-dir manifests (.claude-plugin/.opencode-plugin) are
+	// expected to resolve plugin sources relative to the repository root even
+	// when imported as direct marketplace file paths.
+	if cleanLocalPath == cleanMarketplacePath {
+		manifestDir := filepath.Dir(cleanMarketplacePath)
+		manifestDirName := filepath.Base(manifestDir)
+
+		if manifestDirName == ".claude-plugin" || manifestDirName == ".opencode-plugin" {
+			return filepath.Dir(manifestDir)
+		}
+
+		return manifestDir
+	}
+
+	// Directory discovery resolves plugin source paths relative to the discovery
+	// root (repository root or requested subpath), even when the manifest itself
+	// lives under .claude-plugin/.opencode-plugin.
+	return cleanLocalPath
+}
+
+func discoverImportResourcesByMode(localPath, discoveryMode string) (*discoveredImportResources, error) {
+	discoveryMode = repomanifest.NormalizeDiscoveryMode(discoveryMode)
+	if err := repomanifest.ValidateDiscoveryMode(discoveryMode); err != nil {
+		return nil, err
+	}
+
+	if err := ensureNormalizedMarketplacePathExists(localPath); err != nil {
+		return nil, err
+	}
+
+	result := &discoveredImportResources{}
+
+	discoverGeneric := func() error {
+		commands, commandErrors, err := discovery.DiscoverCommandsWithErrors(localPath, "")
+		if err != nil {
+			return fmt.Errorf("failed to discover commands: %w", err)
+		}
+		result.commands = commands
+
+		skills, skillErrors, err := discovery.DiscoverSkillsWithErrors(localPath, "")
+		if err != nil {
+			return fmt.Errorf("failed to discover skills: %w", err)
+		}
+		result.skills = skills
+
+		agents, agentErrors, err := discovery.DiscoverAgentsWithErrors(localPath, "")
+		if err != nil {
+			return fmt.Errorf("failed to discover agents: %w", err)
+		}
+		result.agents = agents
+
+		packages, err := discovery.DiscoverPackages(localPath, "")
+		if err != nil {
+			return fmt.Errorf("failed to discover packages: %w", err)
+		}
+		result.packages = packages
+
+		result.discoveryErrors = append(result.discoveryErrors, commandErrors...)
+		result.discoveryErrors = append(result.discoveryErrors, skillErrors...)
+		result.discoveryErrors = append(result.discoveryErrors, agentErrors...)
+		return nil
+	}
+
+	discoverMarketplaceOnly := func() error {
+		marketplaceConfig, marketplacePath, err := marketplace.DiscoverMarketplace(localPath, "")
+		if err != nil {
+			return fmt.Errorf("failed to parse marketplace: %w", err)
+		}
+
+		if marketplaceConfig == nil {
+			return fmt.Errorf("discovery mode %q requires marketplace.json, but none was found in %s", repomanifest.DiscoveryModeMarketplace, localPath)
+		}
+
+		result.marketplaceConfig = marketplaceConfig
+		result.marketplacePath = marketplacePath
+
+		basePath := marketplaceSourceBasePath(localPath, marketplacePath)
+		marketplacePackages, genErr := marketplace.GeneratePackages(marketplaceConfig, basePath)
+		if genErr != nil {
+			return fmt.Errorf("failed to generate packages from marketplace: %w", genErr)
+		}
+		if len(marketplacePackages) == 0 {
+			return fmt.Errorf("marketplace discovered at %s but no plugin resources were resolvable", marketplacePath)
+		}
+		result.marketplacePackages = marketplacePackages
+		return nil
+	}
+
+	switch discoveryMode {
+	case repomanifest.DiscoveryModeGeneric:
+		if err := discoverGeneric(); err != nil {
+			return nil, err
+		}
+	case repomanifest.DiscoveryModeMarketplace:
+		if err := discoverMarketplaceOnly(); err != nil {
+			return nil, err
+		}
+	case repomanifest.DiscoveryModeAuto:
+		marketplaceConfig, marketplacePath, err := marketplace.DiscoverMarketplace(localPath, "")
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse marketplace: %w", err)
+		}
+		if marketplaceConfig != nil {
+			result.marketplaceConfig = marketplaceConfig
+			result.marketplacePath = marketplacePath
+			basePath := marketplaceSourceBasePath(localPath, marketplacePath)
+			marketplacePackages, genErr := marketplace.GeneratePackages(marketplaceConfig, basePath)
+			if genErr != nil {
+				return nil, fmt.Errorf("failed to generate packages from marketplace: %w", genErr)
+			}
+			if len(marketplacePackages) == 0 {
+				return nil, fmt.Errorf("marketplace discovered at %s but no plugin resources were resolvable", marketplacePath)
+			}
+			result.marketplacePackages = marketplacePackages
+			break
+		}
+		if err := discoverGeneric(); err != nil {
+			return nil, err
+		}
+	}
+
+	return result, nil
+}
+
 // importFromLocalPath performs the core import logic from a local directory.
 // This function is used by both local imports and remote imports (after cloning to workspace).
 // It discovers resources, applies filters, and imports them into the repository.
@@ -394,7 +576,7 @@ func importFromLocalPath(
 	sourceType string, // "local", "github", "git-url", "test"
 	ref string, // Git ref (empty for local/test)
 ) error {
-	_, err := importFromLocalPathWithMode(localPath, manager, filter, sourceURL, sourceType, ref, "copy", "", "")
+	_, err := importFromLocalPathWithMode(localPath, manager, filter, sourceURL, sourceType, ref, "copy", repomanifest.DiscoveryModeAuto, "", "")
 	return err
 }
 
@@ -411,45 +593,27 @@ func importFromLocalPathWithMode(
 	sourceType string, // "local", "github", "git-url", "test"
 	ref string, // Git ref (empty for local/test)
 	importMode string, // "copy" or "symlink"
+	discoveryMode string, // "auto", "marketplace", "generic"
 	sourceName string, // Explicit source name from manifest (empty = derive from URL)
 	sourceID string, // Source ID for metadata tracking (empty = none)
 ) (*output.BulkOperationResult, error) {
-	// Discover all resources (with error collection)
-	commands, commandErrors, err := discovery.DiscoverCommandsWithErrors(localPath, "")
+	discovered, err := discoverImportResourcesByMode(localPath, discoveryMode)
 	if err != nil {
-		return nil, fmt.Errorf("failed to discover commands: %w", err)
+		return nil, err
 	}
 
-	skills, skillErrors, err := discovery.DiscoverSkillsWithErrors(localPath, "")
-	if err != nil {
-		return nil, fmt.Errorf("failed to discover skills: %w", err)
-	}
-
-	agents, agentErrors, err := discovery.DiscoverAgentsWithErrors(localPath, "")
-	if err != nil {
-		return nil, fmt.Errorf("failed to discover agents: %w", err)
-	}
-
-	packages, err := discovery.DiscoverPackages(localPath, "")
-	if err != nil {
-		return nil, fmt.Errorf("failed to discover packages: %w", err)
-	}
-
-	// Collect all discovery errors
-	var discoveryErrors []discovery.DiscoveryError
-	discoveryErrors = append(discoveryErrors, commandErrors...)
-	discoveryErrors = append(discoveryErrors, skillErrors...)
-	discoveryErrors = append(discoveryErrors, agentErrors...)
-
-	// Discover marketplace.json
-	marketplaceConfig, marketplacePath, err := marketplace.DiscoverMarketplace(localPath, "")
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse marketplace: %w", err)
-	}
+	commands := discovered.commands
+	skills := discovered.skills
+	agents := discovered.agents
+	packages := discovered.packages
+	discoveryErrors := discovered.discoveryErrors
+	marketplaceConfig := discovered.marketplaceConfig
+	marketplacePath := discovered.marketplacePath
+	marketplacePackages := discovered.marketplacePackages
 
 	// Check if any resources found
 	totalResources := len(commands) + len(skills) + len(agents) + len(packages)
-	if totalResources == 0 && marketplaceConfig == nil {
+	if totalResources == 0 && len(marketplacePackages) == 0 {
 		return nil, fmt.Errorf("no resources found in: %s\nExpected commands (*.md), skills (*/SKILL.md), agents (*.md), packages (*.package.json), or marketplace.json", localPath)
 	}
 
@@ -476,7 +640,7 @@ func importFromLocalPathWithMode(
 
 		// Check if filter matched any resources
 		filteredTotal := len(commands) + len(skills) + len(agents) + len(packages)
-		if filteredTotal == 0 {
+		if filteredTotal == 0 && len(marketplacePackages) == 0 {
 			if isHumanFormat {
 				fmt.Printf("⚠ Warning: Filter '%s' matched 0 resources (found %d total)\n\n", strings.Join(filter, ", "), totalResources)
 			}
@@ -499,7 +663,6 @@ func importFromLocalPathWithMode(
 	}
 
 	// Display marketplace info if found
-	var marketplacePackages []*marketplace.PackageInfo
 	if marketplaceConfig != nil {
 		if isHumanFormat {
 			relPath := strings.TrimPrefix(marketplacePath, absPath)
@@ -513,12 +676,6 @@ func importFromLocalPathWithMode(
 			// Generate packages from marketplace
 			fmt.Println("\nGenerating packages from marketplace:")
 		}
-		basePath := filepath.Dir(marketplacePath)
-		marketplacePackages, err = marketplace.GeneratePackages(marketplaceConfig, basePath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to generate packages from marketplace: %w", err)
-		}
-
 		if isHumanFormat {
 			for _, pkgInfo := range marketplacePackages {
 				fmt.Printf("  ✓ %s (%d resources)\n", pkgInfo.Package.Name, len(pkgInfo.Package.Resources))
@@ -651,6 +808,25 @@ func addBulkFromLocalWithMode(localPath string, manager *repo.Manager, filter []
 
 	// If it's a single file, handle it specially
 	if !info.IsDir() {
+		if filepath.Base(localPath) == "marketplace.json" {
+			absPath, absErr := filepath.Abs(localPath)
+			if absErr != nil {
+				return fmt.Errorf("failed to get absolute path: %w", absErr)
+			}
+
+			sourceURL := "file://" + absPath
+			sourceType := string(source.Local)
+
+			if sourceName == "" {
+				sourceName = nameFlag
+			}
+			if sourceName == "" {
+				sourceName = filepath.Base(filepath.Dir(absPath))
+			}
+
+			_, importErr := importFromLocalPathWithMode(localPath, manager, filter, sourceURL, sourceType, "", importMode, discoveryFlag, sourceName, sourceID)
+			return importErr
+		}
 		return addSingleResource(localPath, manager)
 	}
 
@@ -688,7 +864,7 @@ func addBulkFromLocalWithMode(localPath string, manager *repo.Manager, filter []
 
 	// Call common import function with import mode
 	var importErr error
-	_, importErr = importFromLocalPathWithMode(localPath, manager, filter, sourceURL, sourceType, "", importMode, sourceName, sourceID)
+	_, importErr = importFromLocalPathWithMode(localPath, manager, filter, sourceURL, sourceType, "", importMode, discoveryFlag, sourceName, sourceID)
 	return importErr
 }
 
@@ -775,7 +951,7 @@ func addBulkFromGitHubWithFilter(parsed *source.ParsedSource, manager *repo.Mana
 	}
 
 	// Call common import function with workspace path
-	_, err = importFromLocalPathWithMode(searchPath, manager, filter, parsed.URL, sourceType, parsed.Ref, "copy", sourceName, sourceID)
+	_, err = importFromLocalPathWithMode(searchPath, manager, filter, parsed.URL, sourceType, parsed.Ref, "copy", discoveryFlag, sourceName, sourceID)
 	return err
 }
 
@@ -1002,8 +1178,11 @@ func findResourceInPath(sourcePath string, resType resource.ResourceType, resNam
 		// Check standard locations
 		candidatePaths = []string{
 			filepath.Join(sourcePath, "agents", resName+".md"),
+			filepath.Join(sourcePath, "agents", resName+".agent.md"),
 			filepath.Join(sourcePath, ".claude", "agents", resName+".md"),
+			filepath.Join(sourcePath, ".claude", "agents", resName+".agent.md"),
 			filepath.Join(sourcePath, ".opencode", "agents", resName+".md"),
+			filepath.Join(sourcePath, ".opencode", "agents", resName+".agent.md"),
 		}
 	}
 
@@ -1100,17 +1279,23 @@ func formatGitHubShortURL(parsed *source.ParsedSource) string {
 // addSourceToManifest adds the source to ai.repo.yaml manifest.
 // include contains the filter patterns to persist (nil/empty = no include filter).
 // If the source already exists, its Include field is replaced (REPLACE semantics).
-func addSourceToManifest(manager *repo.Manager, parsed *source.ParsedSource, include []string) error {
+func addSourceToManifest(manager *repo.Manager, parsed *source.ParsedSource, include []string, discoveryMode string) error {
 	// Load existing manifest
 	manifest, err := repomanifest.LoadForMutation(manager.GetRepoPath())
 	if err != nil {
 		return fmt.Errorf("failed to load manifest: %w", err)
 	}
 
+	discoveryMode = repomanifest.NormalizeDiscoveryMode(discoveryMode)
+	if err := repomanifest.ValidateDiscoveryMode(discoveryMode); err != nil {
+		return err
+	}
+
 	// Create source entry
 	manifestSource := &repomanifest.Source{
-		Name:    nameFlag, // Will be auto-generated if empty
-		Include: include,
+		Name:      nameFlag, // Will be auto-generated if empty
+		Discovery: discoveryMode,
+		Include:   include,
 	}
 
 	// Set path or URL based on source type
@@ -1133,6 +1318,7 @@ func addSourceToManifest(manager *repo.Manager, parsed *source.ParsedSource, inc
 	if existing, found := manifest.GetSource(identifier); found {
 		// Update Include with new values (replace, not merge)
 		existing.Include = include
+		existing.Discovery = discoveryMode
 		// Save manifest with updated include
 		if err := manifest.Save(manager.GetRepoPath()); err != nil {
 			return fmt.Errorf("failed to save manifest: %w", err)

@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/config"
-	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/discovery"
 	resmeta "github.com/dynatrace-oss/ai-config-manager/v3/pkg/metadata"
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/modifications"
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/output"
@@ -246,6 +245,10 @@ and respected during sync: only resources matching the include patterns are impo
 for that source. Removing a pattern from include and re-syncing removes the previously
 imported resource. Sources without include filters import all resources.
 
+Discovery mode (set via "aimgr repo add --discovery") is stored in
+ai.repo.yaml as sources[].discovery and reused during sync. This preserves
+the source's marketplace-first (auto), marketplace-only, or generic behavior.
+
 Example ai.repo.yaml:
 
   version: 1
@@ -287,14 +290,15 @@ func init() {
 // resource names it contains, keyed by type.
 // This uses the same discovery functions as importFromLocalPathWithMode
 // to ensure consistent resource detection.
-func scanSourceResources(sourcePath string) (map[resource.ResourceType]map[string]bool, error) {
+func scanSourceResources(sourcePath, discoveryMode string) (map[resource.ResourceType]map[string]bool, error) {
 	result := make(map[resource.ResourceType]map[string]bool)
 
-	// Discover commands
-	commands, _, err := discovery.DiscoverCommandsWithErrors(sourcePath, "")
+	discovered, err := discoverImportResourcesByMode(sourcePath, discoveryMode)
 	if err != nil {
-		return nil, fmt.Errorf("failed to discover commands: %w", err)
+		return nil, err
 	}
+
+	commands := discovered.commands
 	if len(commands) > 0 {
 		cmdSet := make(map[string]bool, len(commands))
 		for _, cmd := range commands {
@@ -303,11 +307,7 @@ func scanSourceResources(sourcePath string) (map[resource.ResourceType]map[strin
 		result[resource.Command] = cmdSet
 	}
 
-	// Discover skills
-	skills, _, err := discovery.DiscoverSkillsWithErrors(sourcePath, "")
-	if err != nil {
-		return nil, fmt.Errorf("failed to discover skills: %w", err)
-	}
+	skills := discovered.skills
 	if len(skills) > 0 {
 		skillSet := make(map[string]bool, len(skills))
 		for _, skill := range skills {
@@ -316,11 +316,7 @@ func scanSourceResources(sourcePath string) (map[resource.ResourceType]map[strin
 		result[resource.Skill] = skillSet
 	}
 
-	// Discover agents
-	agents, _, err := discovery.DiscoverAgentsWithErrors(sourcePath, "")
-	if err != nil {
-		return nil, fmt.Errorf("failed to discover agents: %w", err)
-	}
+	agents := discovered.agents
 	if len(agents) > 0 {
 		agentSet := make(map[string]bool, len(agents))
 		for _, agent := range agents {
@@ -329,17 +325,37 @@ func scanSourceResources(sourcePath string) (map[resource.ResourceType]map[strin
 		result[resource.Agent] = agentSet
 	}
 
-	// Discover packages
-	packages, err := discovery.DiscoverPackages(sourcePath, "")
-	if err != nil {
-		return nil, fmt.Errorf("failed to discover packages: %w", err)
-	}
+	packages := discovered.packages
 	if len(packages) > 0 {
 		pkgSet := make(map[string]bool, len(packages))
 		for _, pkg := range packages {
 			pkgSet[pkg.Name] = true
 		}
 		result[resource.PackageType] = pkgSet
+	}
+
+	if len(discovered.marketplacePackages) > 0 {
+		pkgSet, ok := result[resource.PackageType]
+		if !ok {
+			pkgSet = make(map[string]bool)
+			result[resource.PackageType] = pkgSet
+		}
+
+		for _, pkgInfo := range discovered.marketplacePackages {
+			pkgSet[pkgInfo.Package.Name] = true
+			for _, ref := range pkgInfo.Package.Resources {
+				resType, resName, parseErr := resource.ParseResourceReference(ref)
+				if parseErr != nil {
+					continue
+				}
+				typeSet, exists := result[resType]
+				if !exists {
+					typeSet = make(map[string]bool)
+					result[resType] = typeSet
+				}
+				typeSet[resName] = true
+			}
+		}
 	}
 
 	return result, nil
@@ -353,15 +369,7 @@ func resolveSourcePathForSync(src *repomanifest.Source, manager *repo.Manager) (
 			return "", fmt.Errorf("failed to create workspace manager: %w", err)
 		}
 
-		sourceStr := src.URL
-		if src.Ref != "" {
-			sourceStr = sourceStr + "@" + src.Ref
-		}
-		if src.Subpath != "" {
-			sourceStr = sourceStr + "/" + src.Subpath
-		}
-
-		parsed, err := source.ParseSource(sourceStr)
+		parsed, err := parsedRemoteSourceForManifestEntry(src)
 		if err != nil {
 			return "", fmt.Errorf("invalid source URL: %w", err)
 		}
@@ -392,6 +400,26 @@ func resolveSourcePathForSync(src *repomanifest.Source, manager *repo.Manager) (
 	}
 
 	return "", fmt.Errorf("source must have either URL or Path")
+}
+
+func parsedRemoteSourceForManifestEntry(src *repomanifest.Source) (*source.ParsedSource, error) {
+	if src == nil || src.URL == "" {
+		return nil, fmt.Errorf("source url cannot be empty")
+	}
+
+	parsed, err := source.ParseSource(src.URL)
+	if err != nil {
+		return nil, err
+	}
+
+	if src.Ref != "" {
+		parsed.Ref = src.Ref
+	}
+	if src.Subpath != "" {
+		parsed.Subpath = src.Subpath
+	}
+
+	return parsed, nil
 }
 
 func applyIncludeFilterToDiscovered(sourceResources map[resource.ResourceType]map[string]bool, include []string) error {
@@ -471,7 +499,7 @@ func detectSyncResourceCollisions(manifest *repomanifest.Manifest, manager *repo
 			continue
 		}
 
-		sourceResources, err := scanSourceResources(sourcePath)
+		sourceResources, err := scanSourceResources(sourcePath, src.Discovery)
 		if err != nil {
 			continue
 		}
@@ -571,7 +599,7 @@ func syncSource(src *repomanifest.Source, manager *repo.Manager) (string, *outpu
 		sourceURL = "file://" + sourcePath
 		sourceType = string(source.Local)
 	}
-	bulkResult, err := importFromLocalPathWithMode(sourcePath, manager, src.Include, sourceURL, sourceType, src.Ref, mode, src.Name, src.ID)
+	bulkResult, err := importFromLocalPathWithMode(sourcePath, manager, src.Include, sourceURL, sourceType, src.Ref, mode, src.Discovery, src.Name, src.ID)
 	if err != nil {
 		return "", bulkResult, err
 	}
@@ -601,7 +629,7 @@ func detectRemovedForSource(src *repomanifest.Source, sourcePath, repoPath strin
 		return nil, nil
 	}
 
-	sourceResources, scanErr := scanSourceResources(sourcePath)
+	sourceResources, scanErr := scanSourceResources(sourcePath, src.Discovery)
 	if scanErr != nil {
 		return nil, []string{fmt.Sprintf("could not scan source %s for removal detection: %v", src.Name, scanErr)}
 	}

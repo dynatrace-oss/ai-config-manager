@@ -213,6 +213,24 @@ func TestParseSource_GitHubURL(t *testing.T) {
 			wantSubpath: "README.md",
 			wantError:   false,
 		},
+		{
+			name:        "GitHub blob marketplace URL",
+			input:       "https://github.com/owner/repo/blob/main/.claude-plugin/marketplace.json",
+			wantType:    GitHub,
+			wantURL:     "https://github.com/owner/repo",
+			wantRef:     "main",
+			wantSubpath: ".claude-plugin/marketplace.json",
+			wantError:   false,
+		},
+		{
+			name:        "raw GitHub marketplace URL normalized",
+			input:       "https://raw.githubusercontent.com/owner/repo/main/.claude-plugin/marketplace.json",
+			wantType:    GitHub,
+			wantURL:     "https://github.com/owner/repo",
+			wantRef:     "main",
+			wantSubpath: ".claude-plugin/marketplace.json",
+			wantError:   false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -239,6 +257,52 @@ func TestParseSource_GitHubURL(t *testing.T) {
 			}
 			if got.Subpath != tt.wantSubpath {
 				t.Errorf("ParseSource(%q).Subpath = %v, want %v", tt.input, got.Subpath, tt.wantSubpath)
+			}
+		})
+	}
+}
+
+func TestParseSource_RepoBackedMarketplaceFailures(t *testing.T) {
+	tests := []struct {
+		name       string
+		input      string
+		errContain string
+	}{
+		{
+			name:       "github marketplace path without blob ref is rejected",
+			input:      "https://github.com/owner/repo/marketplace.json",
+			errContain: "repo-backed /blob/<ref>/.../marketplace.json",
+		},
+		{
+			name:       "gitlab marketplace url rejected",
+			input:      "https://gitlab.com/owner/repo/-/raw/main/marketplace.json",
+			errContain: "only repo-backed URLs that normalize to clone URL + ref + manifest path are supported",
+		},
+		{
+			name:       "non repo marketplace url rejected",
+			input:      "https://example.com/marketplace.json",
+			errContain: "standalone remote manifest fetching is not supported",
+		},
+		{
+			name:       "raw github non marketplace url rejected",
+			input:      "https://raw.githubusercontent.com/owner/repo/main/README.md",
+			errContain: "only repo-backed marketplace.json file URLs are supported",
+		},
+		{
+			name:       "raw github marketplace missing ref rejected",
+			input:      "https://raw.githubusercontent.com/owner/repo/marketplace.json",
+			errContain: "unable to normalize raw GitHub marketplace URL",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := ParseSource(tt.input)
+			if err == nil {
+				t.Fatalf("ParseSource(%q) expected error, got nil", tt.input)
+			}
+			if !strings.Contains(err.Error(), tt.errContain) {
+				t.Fatalf("ParseSource(%q) error = %q, want contain %q", tt.input, err.Error(), tt.errContain)
 			}
 		})
 	}

@@ -3,6 +3,7 @@ package source
 import (
 	"fmt"
 	"net/url"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -41,6 +42,8 @@ var (
 	// Git SSH pattern
 	gitSSHRegex = regexp.MustCompile(`^git@`)
 )
+
+const marketplaceManifestFileName = "marketplace.json"
 
 // ParseSource parses a source specification and returns a ParsedSource.
 //
@@ -198,14 +201,38 @@ func parseHTTPURL(input string) (*ParsedSource, error) {
 		return nil, fmt.Errorf("invalid URL: %w", err)
 	}
 
+	if normalized, rawErr := parseGitHubRawMarketplaceURL(parsedURL, input); rawErr != nil {
+		return nil, rawErr
+	} else if normalized != nil {
+		return normalized, nil
+	}
+
 	// Check if it's a GitHub URL
 	if githubURLRegex.MatchString(input) {
-		return parseGitHubURL(input)
+		parsed, parseErr := parseGitHubURL(input)
+		if parseErr != nil {
+			return nil, parseErr
+		}
+
+		// URLs that point to marketplace.json must be repo-backed file URLs that can
+		// be normalized into clone URL + ref + subpath.
+		if looksLikeMarketplaceManifestPath(parsedURL.Path) && parsed.Subpath == "" {
+			return nil, fmt.Errorf("unsupported GitHub marketplace manifest URL %q: use a repo-backed /blob/<ref>/.../marketplace.json or raw.githubusercontent.com URL", input)
+		}
+
+		return parsed, nil
 	}
 
 	// Check if it's a GitLab URL
 	if gitlabURLRegex.MatchString(input) {
+		if looksLikeMarketplaceManifestPath(parsedURL.Path) {
+			return nil, fmt.Errorf("unsupported remote marketplace manifest URL %q: only repo-backed URLs that normalize to clone URL + ref + manifest path are supported; standalone remote manifest fetching is not supported", input)
+		}
 		return parseGitLabURL(input)
+	}
+
+	if looksLikeMarketplaceManifestPath(parsedURL.Path) {
+		return nil, fmt.Errorf("unsupported remote marketplace manifest URL %q: only repo-backed URLs that normalize to clone URL + ref + manifest path are supported; standalone remote manifest fetching is not supported", input)
 	}
 
 	// Generic git URL — extract subpath from .git/ delimiter if present
@@ -222,6 +249,48 @@ func parseHTTPURL(input string) (*ParsedSource, error) {
 		URL:     urlStr,
 		Subpath: subpath,
 	}, nil
+}
+
+func parseGitHubRawMarketplaceURL(parsedURL *url.URL, input string) (*ParsedSource, error) {
+	if parsedURL == nil {
+		return nil, nil
+	}
+
+	if !strings.EqualFold(parsedURL.Host, "raw.githubusercontent.com") {
+		return nil, nil
+	}
+
+	if !looksLikeMarketplaceManifestPath(parsedURL.Path) {
+		return nil, fmt.Errorf("unsupported raw GitHub URL %q: only repo-backed marketplace.json file URLs are supported", input)
+	}
+
+	pathParts := strings.Split(strings.Trim(parsedURL.Path, "/"), "/")
+	if len(pathParts) < 4 {
+		return nil, fmt.Errorf("unable to normalize raw GitHub marketplace URL %q: expected /<owner>/<repo>/<ref>/.../marketplace.json", input)
+	}
+
+	owner := pathParts[0]
+	repo := strings.TrimSuffix(pathParts[1], ".git")
+	ref := pathParts[2]
+	subpath := strings.Join(pathParts[3:], "/")
+
+	if owner == "" || repo == "" || ref == "" || subpath == "" {
+		return nil, fmt.Errorf("unable to normalize raw GitHub marketplace URL %q: expected /<owner>/<repo>/<ref>/.../marketplace.json", input)
+	}
+
+	return &ParsedSource{
+		Type:    GitHub,
+		URL:     fmt.Sprintf("https://github.com/%s/%s", owner, repo),
+		Ref:     ref,
+		Subpath: subpath,
+	}, nil
+}
+
+func looksLikeMarketplaceManifestPath(rawPath string) bool {
+	if rawPath == "" {
+		return false
+	}
+	return strings.EqualFold(path.Base(rawPath), marketplaceManifestFileName)
 }
 
 // parseGitHubURL parses a full GitHub URL
