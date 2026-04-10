@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.8.0] - 2026-04-10
+
+### Added
+- **Marketplace-first source discovery** — `aimgr repo add` now defaults to `--discovery auto`, preferring curated `marketplace.json` imports (including generated packages) when available, with explicit `marketplace` and `generic` modes for stricter control.
+- **Direct marketplace manifest source support** — Source parsing and marketplace discovery now support direct marketplace-file inputs for local paths and repo-backed remote URLs, including normalized GitHub raw/blob forms.
+
+### Changed
+- **Persistent discovery behavior for sync** — Source entries in `ai.repo.yaml` now persist a `discovery` mode so `aimgr repo sync` consistently reuses marketplace-first vs marketplace-only vs generic behavior across subsequent syncs.
+- **Marketplace manifest search/update behavior** — Marketplace detection now prioritizes `.claude-plugin/marketplace.json` and `.opencode-plugin/marketplace.json`, while keeping legacy `.opencode/marketplace.json` as fallback.
+
+### Documentation
+- **Source format and discovery guidance** — Updated source docs with marketplace-file source examples, `repo add --discovery` mode documentation, and explicit notes that sync reuses persisted discovery mode.
+
 ## [3.7.1] - 2026-04-07
 
 ### Changed
@@ -946,7 +959,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cross-platform support (Linux, macOS)
 - Configuration management with XDG base directory support
 
-[Unreleased]: https://github.com/dynatrace-oss/ai-config-manager/compare/v3.5.0...HEAD
+[Unreleased]: https://github.com/dynatrace-oss/ai-config-manager/compare/v3.8.0...HEAD
+[3.8.0]: https://github.com/dynatrace-oss/ai-config-manager/compare/v3.7.1...v3.8.0
+[3.7.1]: https://github.com/dynatrace-oss/ai-config-manager/compare/v3.7.0...v3.7.1
+[3.7.0]: https://github.com/dynatrace-oss/ai-config-manager/compare/v3.6.0...v3.7.0
+[3.6.0]: https://github.com/dynatrace-oss/ai-config-manager/compare/v3.5.0...v3.6.0
 [3.5.0]: https://github.com/dynatrace-oss/ai-config-manager/compare/v3.4.0...v3.5.0
 [3.4.0]: https://github.com/dynatrace-oss/ai-config-manager/compare/v3.3.0...v3.4.0
 [3.3.0]: https://github.com/dynatrace-oss/ai-config-manager/compare/v3.2.0...v3.3.0
