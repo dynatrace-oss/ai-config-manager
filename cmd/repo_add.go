@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -1440,10 +1441,95 @@ func printDiscoveryErrors(errors []discovery.DiscoveryError) {
 		}
 
 		fmt.Printf("  ✗ %s\n", shortPath)
-		fmt.Printf("    Error: %v\n", err.Error)
+		label, message, suggestions := formatDiscoveryErrorDisplay(err.Error)
+		fmt.Printf("    %s: %s\n", label, message)
+		for _, suggestion := range suggestions {
+			fmt.Printf("    → %s\n", suggestion)
+		}
 		fmt.Println()
 	}
 
-	fmt.Println("  Tip: These resources were skipped due to validation errors.")
-	fmt.Println("       Fix the issues above and re-run the import.")
+	fmt.Println("  Tip: Some files were skipped during discovery.")
+	fmt.Println("       If a skipped file is only documentation, no action is needed. If it is meant to be imported, fix the issue above and re-run the import.")
+}
+
+func formatDiscoveryErrorDisplay(err error) (label string, message string, suggestions []string) {
+	var validationErr *resource.ValidationError
+	if errors.As(err, &validationErr) {
+		if isMarkdownResourceNoFrontmatterError(validationErr) {
+			return formatMarkdownResourceNoFrontmatterDisplay(validationErr.ResourceType)
+		}
+
+		suggestion := []string{}
+		if validationErr.Suggestion != "" {
+			suggestion = append(suggestion, "Suggestion: "+validationErr.Suggestion)
+		}
+
+		return "Error", formatValidationErrorMessage(validationErr), suggestion
+	}
+
+	return "Error", err.Error(), nil
+}
+
+const noFrontmatterFoundErrorSubstring = "no frontmatter found"
+
+func isMarkdownResourceNoFrontmatterError(validationErr *resource.ValidationError) bool {
+	if validationErr == nil || validationErr.Err == nil {
+		return false
+	}
+
+	if !isMarkdownFileResourceType(validationErr.ResourceType) {
+		return false
+	}
+
+	return strings.Contains(validationErr.Err.Error(), noFrontmatterFoundErrorSubstring)
+}
+
+func isMarkdownFileResourceType(resourceType string) bool {
+	return resourceType == string(resource.Command) || resourceType == string(resource.Agent)
+}
+
+func formatMarkdownResourceNoFrontmatterDisplay(resourceType string) (label string, message string, suggestions []string) {
+	article := "a"
+	if resourceType == string(resource.Agent) {
+		article = "an"
+	}
+
+	return "Skipped",
+		fmt.Sprintf("markdown file in %ss/ does not look like %s %s definition because it does not start with YAML frontmatter", resourceType, article, resourceType),
+		[]string{
+			"If this file is documentation, no action is needed.",
+			fmt.Sprintf("If this file is meant to be %s %s, add YAML frontmatter starting with '---'.", article, resourceType),
+		}
+}
+
+func formatValidationErrorMessage(err *resource.ValidationError) string {
+	var parts []string
+
+	if err.ResourceType != "" && err.ResourceName != "" {
+		parts = append(parts, fmt.Sprintf("%s '%s'", err.ResourceType, err.ResourceName))
+	} else if err.ResourceType != "" {
+		parts = append(parts, err.ResourceType)
+	}
+
+	if err.FieldName != "" {
+		parts = append(parts, fmt.Sprintf("field '%s'", err.FieldName))
+	}
+
+	if err.FilePath != "" {
+		parts = append(parts, fmt.Sprintf("in %s", err.FilePath))
+	}
+
+	msg := strings.Join(parts, " ")
+	if msg != "" {
+		msg += ": "
+	}
+
+	if err.Err != nil {
+		msg += err.Err.Error()
+	} else {
+		msg += "validation failed"
+	}
+
+	return msg
 }

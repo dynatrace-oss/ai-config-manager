@@ -410,7 +410,7 @@ func TestPrintDiscoveryErrors_OutputFormat(t *testing.T) {
 		"✗",
 		"test-skill",
 		"Error: validation failed",
-		"Tip: These resources were skipped due to validation errors.",
+		"Tip: Some files were skipped during discovery.",
 	}
 
 	for _, elem := range expectedElements {
@@ -418,6 +418,276 @@ func TestPrintDiscoveryErrors_OutputFormat(t *testing.T) {
 			t.Errorf("Expected output to contain %q, but it didn't.\nOutput:\n%s", elem, output)
 		}
 	}
+}
+
+func TestPrintDiscoveryErrors_AgentNoFrontmatterUsesNeutralMessage(t *testing.T) {
+	err := resource.NewValidationError(
+		"/tmp/source/agents/index.md",
+		"agent",
+		"index",
+		"frontmatter",
+		fmt.Errorf("no frontmatter found (must start with '---')"),
+	)
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	printDiscoveryErrors([]discovery.DiscoveryError{{Path: "/tmp/source/agents/index.md", Error: err}})
+
+	_ = w.Close()
+	os.Stdout = oldStdout
+	var buf bytes.Buffer
+	_, _ = io.Copy(&buf, r)
+	output := buf.String()
+
+	expected := []string{
+		"✗ agents/index.md",
+		"Skipped: markdown file in agents/ does not look like an agent definition because it does not start with YAML frontmatter",
+		"If this file is documentation, no action is needed.",
+		"If this file is meant to be an agent, add YAML frontmatter starting with '---'.",
+		"If a skipped file is only documentation, no action is needed.",
+	}
+
+	for _, elem := range expected {
+		if !strings.Contains(output, elem) {
+			t.Errorf("Expected output to contain %q, but it didn't.\nOutput:\n%s", elem, output)
+		}
+	}
+
+	unexpected := []string{
+		"Suggestion: Add YAML frontmatter at the top of the file:",
+		"Fix the issues above and re-run the import.",
+	}
+
+	for _, elem := range unexpected {
+		if strings.Contains(output, elem) {
+			t.Errorf("Did not expect output to contain %q.\nOutput:\n%s", elem, output)
+		}
+	}
+}
+
+func TestPrintDiscoveryErrors_CommandNoFrontmatterUsesNeutralMessage(t *testing.T) {
+	err := resource.NewValidationError(
+		"/tmp/source/commands/index.md",
+		"command",
+		"index",
+		"frontmatter",
+		fmt.Errorf("no frontmatter found (must start with '---')"),
+	)
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	printDiscoveryErrors([]discovery.DiscoveryError{{Path: "/tmp/source/commands/index.md", Error: err}})
+
+	_ = w.Close()
+	os.Stdout = oldStdout
+	var buf bytes.Buffer
+	_, _ = io.Copy(&buf, r)
+	output := buf.String()
+
+	expected := []string{
+		"✗ commands/index.md",
+		"Skipped: markdown file in commands/ does not look like a command definition because it does not start with YAML frontmatter",
+		"If this file is documentation, no action is needed.",
+		"If this file is meant to be a command, add YAML frontmatter starting with '---'.",
+		"If a skipped file is only documentation, no action is needed.",
+	}
+
+	for _, elem := range expected {
+		if !strings.Contains(output, elem) {
+			t.Errorf("Expected output to contain %q, but it didn't.\nOutput:\n%s", elem, output)
+		}
+	}
+}
+
+func TestPrintDiscoveryErrors_CommandAndAgentNoFrontmatterShareNeutralWarningShape(t *testing.T) {
+	commandErr := resource.NewValidationError(
+		"/tmp/source/commands/index.md",
+		"command",
+		"index",
+		"frontmatter",
+		fmt.Errorf("no frontmatter found (must start with '---')"),
+	)
+	agentErr := resource.NewValidationError(
+		"/tmp/source/agents/index.md",
+		"agent",
+		"index",
+		"frontmatter",
+		fmt.Errorf("no frontmatter found (must start with '---')"),
+	)
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	printDiscoveryErrors([]discovery.DiscoveryError{
+		{Path: "/tmp/source/commands/index.md", Error: commandErr},
+		{Path: "/tmp/source/agents/index.md", Error: agentErr},
+	})
+
+	_ = w.Close()
+	os.Stdout = oldStdout
+	var buf bytes.Buffer
+	_, _ = io.Copy(&buf, r)
+	output := buf.String()
+
+	if !strings.Contains(output, "⚠ Discovery Issues (2):") {
+		t.Fatalf("expected two discovery warnings, got:\n%s", output)
+	}
+
+	if strings.Count(output, "Skipped: markdown file in ") != 2 {
+		t.Fatalf("expected command and agent warnings to both use Skipped neutral shape, got:\n%s", output)
+	}
+	if strings.Count(output, "does not start with YAML frontmatter") != 2 {
+		t.Fatalf("expected matching no-frontmatter neutral wording for command and agent warnings, got:\n%s", output)
+	}
+	if strings.Count(output, "If this file is documentation, no action is needed.") != 2 {
+		t.Fatalf("expected neutral documentation guidance for both command and agent warnings, got:\n%s", output)
+	}
+
+	if !strings.Contains(output, "If this file is meant to be a command, add YAML frontmatter starting with '---'.") {
+		t.Fatalf("expected command-specific follow-up guidance, got:\n%s", output)
+	}
+	if !strings.Contains(output, "If this file is meant to be an agent, add YAML frontmatter starting with '---'.") {
+		t.Fatalf("expected agent-specific follow-up guidance, got:\n%s", output)
+	}
+}
+
+func TestImportFromLocalPathWithMode_GenericDiscoveryWarningMatrix_SkillsReadmeIsStructurallySilent(t *testing.T) {
+	withRepoAddFlagsReset(t, func() {
+		sourceDir := t.TempDir()
+
+		if err := os.MkdirAll(filepath.Join(sourceDir, "commands"), 0755); err != nil {
+			t.Fatalf("failed to create commands directory: %v", err)
+		}
+		if err := os.MkdirAll(filepath.Join(sourceDir, "agents"), 0755); err != nil {
+			t.Fatalf("failed to create agents directory: %v", err)
+		}
+		if err := os.MkdirAll(filepath.Join(sourceDir, "skills", "valid-skill"), 0755); err != nil {
+			t.Fatalf("failed to create skill directory: %v", err)
+		}
+
+		if err := os.WriteFile(filepath.Join(sourceDir, "commands", "valid-command.md"), []byte("---\ndescription: valid command\n---\n# valid-command\n"), 0644); err != nil {
+			t.Fatalf("failed to write valid command: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(sourceDir, "commands", "index.md"), []byte("# Command Docs\n"), 0644); err != nil {
+			t.Fatalf("failed to write command docs file: %v", err)
+		}
+
+		if err := os.WriteFile(filepath.Join(sourceDir, "agents", "valid-agent.md"), []byte("---\ndescription: valid agent\n---\n# valid-agent\n"), 0644); err != nil {
+			t.Fatalf("failed to write valid agent: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(sourceDir, "agents", "index.md"), []byte("# Agent Docs\n"), 0644); err != nil {
+			t.Fatalf("failed to write agent docs file: %v", err)
+		}
+
+		if err := os.WriteFile(filepath.Join(sourceDir, "skills", "valid-skill", "SKILL.md"), []byte("---\nname: valid-skill\ndescription: valid skill\n---\n# skill\n"), 0644); err != nil {
+			t.Fatalf("failed to write valid skill: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(sourceDir, "skills", "README.md"), []byte("# skills docs\n"), 0644); err != nil {
+			t.Fatalf("failed to write loose skills README: %v", err)
+		}
+
+		repoPath := t.TempDir()
+		manager := repo.NewManagerWithPath(repoPath)
+		if err := manager.Init(); err != nil {
+			t.Fatalf("failed to init repo: %v", err)
+		}
+
+		oldStdout := os.Stdout
+		r, w, _ := os.Pipe()
+		os.Stdout = w
+
+		_, err := importFromLocalPathWithMode(
+			sourceDir,
+			manager,
+			nil,
+			"file://"+sourceDir,
+			string(source.Local),
+			"",
+			"copy",
+			repomanifest.DiscoveryModeGeneric,
+			"test-source",
+			"src-test",
+		)
+
+		_ = w.Close()
+		os.Stdout = oldStdout
+
+		var buf bytes.Buffer
+		_, _ = io.Copy(&buf, r)
+		output := buf.String()
+
+		if err != nil {
+			t.Fatalf("import failed: %v\noutput:\n%s", err, output)
+		}
+
+		if !strings.Contains(output, "⚠ Discovery Issues (2):") {
+			t.Fatalf("expected warnings only for command/agent no-frontmatter candidates, got:\n%s", output)
+		}
+		if !strings.Contains(output, "✗ commands/index.md") {
+			t.Fatalf("expected command docs warning for commands/index.md, got:\n%s", output)
+		}
+		if !strings.Contains(output, "✗ agents/index.md") {
+			t.Fatalf("expected agent docs warning for agents/index.md, got:\n%s", output)
+		}
+
+		// Structural skill rule: only subdirectories containing SKILL.md are skill
+		// candidates. Loose markdown files under skills/ are not candidates and must
+		// therefore remain warning-silent.
+		if strings.Contains(output, "skills/README.md") {
+			t.Fatalf("did not expect discovery warning for loose skills markdown file, got:\n%s", output)
+		}
+	})
+}
+
+func TestFormatDiscoveryErrorDisplay_NoFrontmatterDetectionContract(t *testing.T) {
+	t.Run("matching sentinel substring returns neutral skipped display", func(t *testing.T) {
+		err := resource.NewValidationError(
+			"/tmp/source/commands/index.md",
+			"command",
+			"index",
+			"frontmatter",
+			fmt.Errorf("%s (must start with '---')", noFrontmatterFoundErrorSubstring),
+		)
+
+		label, message, suggestions := formatDiscoveryErrorDisplay(err)
+
+		if label != "Skipped" {
+			t.Fatalf("expected label Skipped, got %q", label)
+		}
+		if !strings.Contains(message, "does not start with YAML frontmatter") {
+			t.Fatalf("expected neutral no-frontmatter message, got %q", message)
+		}
+		if len(suggestions) == 0 {
+			t.Fatal("expected neutral suggestions for no-frontmatter case")
+		}
+	})
+
+	t.Run("different wording no longer matches sentinel substring", func(t *testing.T) {
+		err := resource.NewValidationError(
+			"/tmp/source/commands/index.md",
+			"command",
+			"index",
+			"frontmatter",
+			fmt.Errorf("no closing frontmatter delimiter"),
+		)
+
+		label, message, suggestions := formatDiscoveryErrorDisplay(err)
+
+		if label != "Error" {
+			t.Fatalf("expected label Error when sentinel wording is absent, got %q", label)
+		}
+		if strings.Contains(message, "does not look like a command definition") {
+			t.Fatalf("unexpected neutral skipped message without sentinel wording: %q", message)
+		}
+		if len(suggestions) == 0 {
+			t.Fatal("expected standard validation suggestion to remain for non-matching wording")
+		}
+	})
 }
 
 func TestRepoAdd_ManifestCommitIsScopedToManifestFiles(t *testing.T) {
