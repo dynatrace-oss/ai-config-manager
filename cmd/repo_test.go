@@ -30,6 +30,7 @@ func TestRepoCommandHasSubcommands(t *testing.T) {
 		"show-manifest",
 		"verify",
 		"sync",
+		"rebuild",
 		"drop",
 		"prune",
 		"describe",

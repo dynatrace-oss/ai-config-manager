@@ -736,7 +736,7 @@ Concurrency behavior for mutations:
 
 Lock ordering is: **repo -> cache -> workspace metadata**.
 
-This means concurrent `repo add/sync/remove/drop/apply-manifest/init/repair/verify --fix/prune`
+This means concurrent `repo add/sync/rebuild/remove/drop/apply-manifest/init/repair/verify --fix/prune`
 operations are serialized safely, and cache metadata updates are protected against
 lost updates.
 
@@ -760,6 +760,12 @@ aimgr repo sync
 # Preview without changes
 aimgr repo sync --dry-run
 
+# Reconcile stale source-owned resources/packages after source changes
+aimgr repo sync --prune
+
+# Preview prune cleanup without mutating the repo
+aimgr repo sync --dry-run --prune
+
 # Skip existing resources (don't overwrite)
 aimgr repo sync --skip-existing
 ```
@@ -769,6 +775,21 @@ aimgr repo sync --skip-existing
 For each source in `ai.repo.yaml`:
 - **Path sources**: Re-create symlinks to source files
 - **URL sources**: Download latest version, copy to repository
+
+By default, `repo sync` is non-pruning: it refreshes configured sources without
+removing previously imported source-owned resources/packages that have become
+stale due to include/subpath/discovery changes.
+
+Use `--prune` when you need reconciliation cleanup. In prune mode, sync removes
+stale source-owned resources/packages that no longer match each source's
+effective definition after include/subpath/discovery filtering.
+
+`--dry-run --prune` previews planned prune cleanup actions without mutating the
+repository.
+
+> `repo sync --prune` is different from `repo prune`: `repo sync --prune`
+> reconciles source-owned resources/packages, while `repo prune` removes
+> unreferenced `.workspace/` Git caches.
 
 `repo sync` also reuses each source's persisted `sources[].discovery` mode from
 `ai.repo.yaml` (set by `repo add --discovery`). This preserves marketplace-first
@@ -787,6 +808,7 @@ For each source in `ai.repo.yaml`:
 |------|-------------|
 | `--skip-existing` | Don't overwrite existing resources |
 | `--dry-run` | Preview without importing |
+| `--prune` | Remove stale source-owned resources/packages during reconciliation |
 | `--format=<format>` | Output format: table, json, yaml |
 
 ### Handling Failures
@@ -971,6 +993,40 @@ Soft drop behavior:
 - Preserves `.workspace/locks/` so lock paths remain stable during command execution
 
 Use `--full-delete` only when you want to remove the entire repository directory.
+
+### repo rebuild
+
+Safely rebuild imported repository content from the existing `ai.repo.yaml` source list.
+
+```bash
+aimgr repo rebuild [flags]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--dry-run` | Preview rebuild sync results without dropping or importing |
+
+`repo rebuild` is a thin orchestration over **soft `repo drop` + `repo sync`** in one command:
+
+1. Soft-drop imported state while preserving `ai.repo.yaml` and configured sources
+2. Re-import all configured sources (same import behavior as `repo sync`)
+
+Use `repo rebuild` when you want a clean re-import from current source definitions without manually running separate drop/sync steps.
+
+Semantics summary:
+
+- **Preserved manifest/source config:** keeps `ai.repo.yaml` and source definitions
+- **Cache behavior:** clears `.workspace/` caches as part of soft drop; preserves `.workspace/locks/` for lock-path stability
+- **`--dry-run` behavior:** does **not** run soft drop; previews sync only (equivalent scope to `repo sync --dry-run`)
+- **Failure behavior:**
+  - empty source list fails without mutating repository state
+  - per-source failures are reported after attempting all sources
+
+How this differs from related lifecycle commands:
+
+- **`repo drop`**: clears imported state; you run `repo sync` later if/when you want re-import
+- **`repo sync --prune`**: reconciles stale source-owned resources/packages during sync, but does not perform a soft drop reset first
+- **`repo rebuild`**: performs the full soft-drop-then-sync reset workflow in one locked operation
 
 ---
 

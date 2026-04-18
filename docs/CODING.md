@@ -104,6 +104,7 @@ Use this matrix when adding or changing commands that touch shared repo state.
 | `aimgr repo init` | write | Creates/updates repo structure and metadata. |
 | `aimgr repo add` | write | Adds resources/metadata to shared repo state. |
 | `aimgr repo sync` | write | Mutates repo content and source metadata. |
+| `aimgr repo rebuild` | write | Orchestrates soft drop + sync under one lock. |
 | `aimgr repo remove` | write | Removes source entries and associated metadata. |
 | `aimgr repo drop` | write | Deletes repository data. |
 | `aimgr repo apply-manifest` | write | Applies source mutations from manifest. |

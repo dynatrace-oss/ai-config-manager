@@ -45,6 +45,7 @@ func TestRepoMutatingCommands_FailWhenRepoLockHeld(t *testing.T) {
 		{name: "repo init", run: func() error { return repoInitCmd.RunE(repoInitCmd, nil) }},
 		{name: "repo add", run: func() error { return repoAddCmd.RunE(repoAddCmd, []string{"local:" + sourceDir}) }},
 		{name: "repo sync", run: func() error { return runSync(syncCmd, nil) }},
+		{name: "repo rebuild", run: func() error { return runRebuild(repoRebuildCmd, nil) }},
 		{name: "repo remove", run: func() error { return runRemove(repoRemoveCmd, []string{"missing-source"}) }},
 		{name: "repo drop", run: func() error { return runDrop(repoDropCmd, nil) }},
 		{name: "repo apply-manifest", run: func() error { return runApplyManifest(repoApplyManifestCmd, []string{manifestPath}) }},

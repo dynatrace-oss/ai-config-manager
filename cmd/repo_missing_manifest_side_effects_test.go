@@ -61,6 +61,12 @@ func TestManifestRequiredCommands_MissingManifestDoNotCreateRepoState(t *testing
 			},
 		},
 		{
+			name: "repo rebuild",
+			run: func() error {
+				return runRebuild(repoRebuildCmd, []string{})
+			},
+		},
+		{
 			name: "repo show-manifest",
 			run: func() error {
 				return runShowManifest(repoShowManifestCmd, nil)

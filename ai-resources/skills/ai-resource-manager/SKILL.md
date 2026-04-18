@@ -15,7 +15,7 @@ Manage AI resources via `aimgr`. Resources live in `~/.local/share/ai-config/rep
 |---|---|
 | `install`, `uninstall`, `init`, `repair`, `clean` | `list`, `verify` |
 | `repo add`, `repo sync`, `repo remove`, `repo apply-manifest` | `repo list`, `repo describe`, `repo info`, `repo show-manifest` |
-| `repo repair`, `repo drop`, `repo prune` | `repo verify`, `repo add --dry-run` |
+| `repo repair`, `repo rebuild`, `repo drop`, `repo prune` | `repo verify`, `repo add --dry-run` |
 
 ## Use Cases
 

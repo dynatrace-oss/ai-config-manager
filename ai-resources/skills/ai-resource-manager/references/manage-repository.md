@@ -7,7 +7,7 @@ AI resources. Sources are tracked in `ai.repo.yaml` inside the repository.
 
 For project-level install/uninstall, see [install-uninstall.md](install-uninstall.md).
 
-**Sections:** [Safety](#️-mutating-operations-require-user-approval) · [Init](#initialize-repository) · [Manifest Workflow](#manifest-workflow) · [Add Sources](#add-sources) · [Sync](#sync-sources) · [Remove Sources](#remove-sources) · [Browse & Inspect](#browse--inspect) · [Validate](#validate-resources-for-developers) · [Verify & Repair](#verify--repair-repository) · [Nuclear Options](#nuclear-options) · [Troubleshooting](#troubleshooting)
+**Sections:** [Safety](#️-mutating-operations-require-user-approval) · [Init](#initialize-repository) · [Manifest Workflow](#manifest-workflow) · [Add Sources](#add-sources) · [Sync](#sync-sources) · [Remove Sources](#remove-sources) · [Browse & Inspect](#browse--inspect) · [Validate](#validate-resources-for-developers) · [Verify & Repair](#verify--repair-repository) · [Nuclear Options](#nuclear-options) · [Rebuild](#rebuild-repository-content) · [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -18,6 +18,7 @@ For project-level install/uninstall, see [install-uninstall.md](install-uninstal
 - `aimgr repo add` — imports resources from a source
 - `aimgr repo apply-manifest` — merges an external manifest into local `ai.repo.yaml`
 - `aimgr repo sync` — re-imports from all configured sources
+- `aimgr repo rebuild` — soft reset + re-import from configured sources
 - `aimgr repo remove` — removes a source and its resources
 - `aimgr repo drop` — removes all resources or deletes repository
 - `aimgr repo repair` — fixes metadata
@@ -177,10 +178,23 @@ Re-import resources from all configured sources in `ai.repo.yaml`:
 aimgr repo sync                   # Overwrites existing (default)
 aimgr repo sync --skip-existing   # Don't overwrite
 aimgr repo sync --dry-run         # Preview only
+aimgr repo sync --prune           # Reconcile stale source-owned resources/packages
 ```
 
 **When to sync:** After upstream changes, to refresh all sources, or after
 editing `ai.repo.yaml` manually.
+
+By default, `repo sync` is non-pruning: it refreshes configured sources without
+removing previously imported source-owned resources/packages that have become
+stale due to include, subpath, or discovery changes.
+
+Use `--prune` when you need reconciliation cleanup. In prune mode, sync removes
+stale source-owned resources/packages that no longer match each source's
+effective definition after include/subpath/discovery filtering.
+
+`repo sync --prune` is different from `repo prune`: `repo sync --prune`
+reconciles source-owned resources/packages, while `repo prune` removes
+unreferenced `.workspace/` Git caches.
 
 ---
 
@@ -309,20 +323,51 @@ aimgr repo repair --dry-run           # Preview fixes
 
 ## Nuclear Options
 
-### Drop All Resources
+### Drop All Resources / Full Delete
 
 ```bash
-# Soft drop: remove imported resources/state, preserve ai.repo.yaml sources
-# (workspace caches are cleared; lock files remain)
-aimgr repo drop
-
-# Rebuild from sources
-aimgr repo sync
+# Preferred full refresh: soft reset + full re-import in one command
+aimgr repo rebuild
 
 # Full delete: remove entire repository directory
 aimgr repo drop --full-delete         # Confirmation prompt
 aimgr repo drop --full-delete --force # Skip prompt
 ```
+
+`repo rebuild` is the primary reset workflow when you want a clean re-import
+from current `ai.repo.yaml` source definitions.
+
+Use manual soft-drop + sync only if you intentionally want to separate those
+steps:
+
+```bash
+# Soft drop only (preserves ai.repo.yaml and sources)
+aimgr repo drop
+
+# Re-import later when ready
+aimgr repo sync
+```
+
+---
+
+## Rebuild Repository Content
+
+`repo rebuild` performs the soft drop + sync lifecycle in one locked operation.
+
+```bash
+aimgr repo rebuild
+aimgr repo rebuild --dry-run
+```
+
+Use rebuild when imported state or metadata looks unreliable and you want a
+clean re-import from existing `ai.repo.yaml` source definitions without running
+separate drop/sync commands.
+
+Behavior summary:
+
+- Preserves `ai.repo.yaml` and configured sources
+- Clears imported resources and derived local state, then re-imports sources
+- `--dry-run` previews sync results only (does not perform the soft drop)
 
 ### Prune Workspace Cache
 
@@ -367,8 +412,7 @@ aimgr repo verify                     # Diagnose
 aimgr repo repair                     # Auto-fix metadata
 
 # If unfixable: rebuild from sources
-aimgr repo drop
-aimgr repo sync
+aimgr repo rebuild
 ```
 
 ### Duplicate Source Names

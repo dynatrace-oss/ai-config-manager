@@ -12,17 +12,21 @@ import (
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/resource"
 )
 
-// TestSyncRemovesDeletedResources verifies that sync detects and removes
-// resources that were deleted from the source between syncs.
+// TestSyncRemovesDeletedResources verifies sync lifecycle semantics for deleted
+// resources:
+//   - plain `repo sync` keeps stale resources
+//   - `repo sync --prune` removes stale resources
 //
 // Scenario:
 //  1. Create source with cmd-a, cmd-b, and skill-a
 //  2. Add source to repo
 //  3. Verify all 3 resources exist
 //  4. Delete cmd-b from source
-//  5. Run repo sync
-//  6. Verify cmd-a and skill-a still exist, cmd-b is removed
-//  7. Verify no metadata for cmd-b
+//  5. Run repo sync (without --prune)
+//  6. Verify cmd-a, skill-a, and stale cmd-b all still exist
+//  7. Run repo sync --prune
+//  8. Verify cmd-a and skill-a still exist, cmd-b is removed
+//  9. Verify no metadata for cmd-b
 func TestSyncRemovesDeletedResources(t *testing.T) {
 	repoDir := t.TempDir()
 	configPath := loadTestConfig(t, "e2e-test")
@@ -88,8 +92,8 @@ func TestSyncRemovesDeletedResources(t *testing.T) {
 		t.Fatalf("Failed to remove cmd-b from source: %v", err)
 	}
 
-	// Step 5: Run repo sync
-	t.Log("Step 5: Running repo sync...")
+	// Step 5: Run repo sync (no prune)
+	t.Log("Step 5: Running repo sync (without prune)...")
 	stdout, stderr, err = runAimgrWithEnv(t, configPath, env, "repo", "sync")
 	if err != nil {
 		t.Fatalf("repo sync failed: %v\nStdout: %s\nStderr: %s", err, stdout, stderr)
@@ -106,41 +110,66 @@ func TestSyncRemovesDeletedResources(t *testing.T) {
 		t.Errorf("skill-a should still exist after sync: %v", err)
 	}
 
-	// Step 7: Verify cmd-b is removed
-	t.Log("Step 7: Verifying cmd-b removed...")
+	// Step 7: Verify cmd-b is NOT removed by default sync
+	t.Log("Step 7: Verifying cmd-b preserved without prune...")
 	cmdBPath := filepath.Join(repoDir, "commands", "sync-life-cmd-b.md")
-	if _, err := os.Lstat(cmdBPath); err == nil {
-		t.Error("sync-life-cmd-b should have been removed by sync, but it still exists")
+	if _, err := os.Lstat(cmdBPath); err != nil {
+		t.Errorf("sync-life-cmd-b should still exist after plain sync: %v", err)
 	}
 
-	// Step 8: Verify no metadata for cmd-b
-	t.Log("Step 8: Verifying metadata cleaned up...")
+	// Step 8: Verify metadata for cmd-b is still present after non-pruning sync
+	t.Log("Step 8: Verifying metadata preserved without prune...")
 	cmdBMetaPath := metadata.GetMetadataPath("sync-life-cmd-b", resource.Command, repoDir)
-	if _, err := os.Stat(cmdBMetaPath); !os.IsNotExist(err) {
-		t.Errorf("Metadata for sync-life-cmd-b should not exist after removal, got: %v", err)
+	if _, err := os.Stat(cmdBMetaPath); err != nil {
+		t.Errorf("Metadata for sync-life-cmd-b should exist after plain sync: %v", err)
 	}
 
-	// Step 9: Verify sync output mentions removal
-	t.Log("Step 9: Verifying sync output mentions removal...")
+	// Step 9: Run repo sync --prune
+	t.Log("Step 9: Running repo sync with prune...")
+	stdout, stderr, err = runAimgrWithEnv(t, configPath, env, "repo", "sync", "--prune")
+	if err != nil {
+		t.Fatalf("repo sync --prune failed: %v\nStdout: %s\nStderr: %s", err, stdout, stderr)
+	}
+	t.Logf("Prune sync output:\n%s", stdout)
+
+	// Step 10: Verify cmd-b is removed by prune sync
+	t.Log("Step 10: Verifying cmd-b removed by prune sync...")
+	if _, err := os.Lstat(cmdBPath); err == nil {
+		t.Error("sync-life-cmd-b should have been removed by repo sync --prune")
+	}
+
+	// Step 11: Verify metadata for cmd-b is cleaned up by prune sync
+	t.Log("Step 11: Verifying metadata cleaned up by prune sync...")
+	if _, err := os.Stat(cmdBMetaPath); !os.IsNotExist(err) {
+		t.Errorf("Metadata for sync-life-cmd-b should not exist after prune removal, got: %v", err)
+	}
+
+	// Step 12: Verify prune sync output mentions removal
+	t.Log("Step 12: Verifying prune sync output mentions removal...")
 	combinedOutput := stdout + stderr
 	if !strings.Contains(combinedOutput, "sync-life-cmd-b") {
 		t.Log("Note: sync output did not mention sync-life-cmd-b removal specifically")
 	}
 
-	t.Log("PASS: Sync correctly removes deleted resources")
+	t.Log("PASS: Sync default and --prune deletion semantics are correct")
 }
 
-// TestSyncDoesNotRemoveOnFailedSource verifies that sync doesn't remove
-// resources from sources that failed to sync.
+// TestSyncDoesNotRemoveOnFailedSource verifies failed-source behavior with
+// both non-pruning and pruning sync modes:
+//   - plain `repo sync` keeps stale resources
+//   - `repo sync --prune` removes stale resources only from successfully
+//     synced sources and preserves resources from failed sources
 //
 // Scenario:
 //  1. Create two local sources with unique resources
 //  2. Add both sources
 //  3. Delete a resource from source-a
 //  4. Make source-b's path invalid
-//  5. Run repo sync
-//  6. Verify deleted resource from source-a IS removed (source synced OK)
-//  7. Verify ALL resources from source-b are KEPT (source failed)
+//  5. Run repo sync (no prune)
+//  6. Verify deleted resource from source-a is KEPT (non-pruning default)
+//  7. Run repo sync --prune
+//  8. Verify deleted resource from source-a IS removed (source synced OK)
+//  9. Verify ALL resources from source-b are KEPT (source failed)
 func TestSyncDoesNotRemoveOnFailedSource(t *testing.T) {
 	repoDir := t.TempDir()
 	configPath := loadTestConfig(t, "e2e-test")
@@ -213,8 +242,8 @@ func TestSyncDoesNotRemoveOnFailedSource(t *testing.T) {
 		t.Fatalf("Failed to remove source B: %v", err)
 	}
 
-	// Step 6: Run repo sync — source A should succeed, source B should fail
-	t.Log("Running repo sync (source A OK, source B will fail)...")
+	// Step 6: Run repo sync (no prune) — source A should succeed, source B should fail
+	t.Log("Running repo sync without prune (source A OK, source B will fail)...")
 	stdout, stderr, err = runAimgrWithEnv(t, configPath, env, "repo", "sync")
 	// Should not error — partial success is OK
 	t.Logf("Sync stdout:\n%s", stdout)
@@ -230,31 +259,48 @@ func TestSyncDoesNotRemoveOnFailedSource(t *testing.T) {
 		t.Errorf("sync-fail-a1 should still exist (not removed from source A): %v", err)
 	}
 
-	// cmd-a2 should be removed (deleted from source A, source A synced OK)
+	// cmd-a2 should still exist (deleted from source A but sync is non-pruning)
 	cmdA2Path := filepath.Join(repoDir, "commands", "sync-fail-a2.md")
-	if _, err := os.Lstat(cmdA2Path); err == nil {
-		t.Error("sync-fail-a2 should have been removed by sync (deleted from source A)")
+	if _, err := os.Lstat(cmdA2Path); err != nil {
+		t.Errorf("sync-fail-a2 should still exist after plain sync: %v", err)
 	}
 
-	// Step 8: cmd-b1 should still exist (source B failed to sync)
-	t.Log("Verifying source B resources preserved...")
+	// Step 8: Run repo sync --prune
+	t.Log("Running repo sync with prune (source A OK, source B will fail)...")
+	stdout, stderr, err = runAimgrWithEnv(t, configPath, env, "repo", "sync", "--prune")
+	t.Logf("Prune sync stdout:\n%s", stdout)
+	t.Logf("Prune sync stderr:\n%s", stderr)
+	if err != nil {
+		t.Logf("Prune sync returned error (expected for partial failure): %v", err)
+	}
+
+	// cmd-a2 should now be removed (deleted from source A, source A synced OK)
+	if _, err := os.Lstat(cmdA2Path); err == nil {
+		t.Error("sync-fail-a2 should have been removed by repo sync --prune")
+	}
+
+	// Step 9: cmd-b1 should still exist (source B failed to sync)
+	t.Log("Verifying failed source resources preserved after prune...")
 	cmdB1Path := filepath.Join(repoDir, "commands", "sync-fail-b1.md")
 	if _, err := os.Lstat(cmdB1Path); err != nil {
-		t.Errorf("sync-fail-b1 should still exist (source B failed to sync, resources should be preserved): %v", err)
+		t.Errorf("sync-fail-b1 should still exist (source B failed to sync, resources must be preserved): %v", err)
 	}
 
-	t.Log("PASS: Failed source resources correctly preserved")
+	t.Log("PASS: Failed source resources preserved; prune only affects successful sources")
 }
 
-// TestSyncAddUpdateRemoveCycle verifies the full lifecycle in a single sync:
-// add new resources, update existing ones, and remove deleted ones.
+// TestSyncAddUpdateRemoveCycle verifies the full lifecycle across sync modes:
+// add new resources, update existing ones, and remove deleted ones only with
+// explicit prune.
 //
 // Scenario:
 //  1. Create source with cmd-a and cmd-b
 //  2. Add source to repo
 //  3. Modify cmd-a content, add cmd-c, delete cmd-b in source
-//  4. Run repo sync
-//  5. Verify: cmd-a updated, cmd-c added, cmd-b removed
+//  4. Run repo sync (no prune)
+//  5. Verify: cmd-a updated, cmd-c added, cmd-b preserved
+//  6. Run repo sync --prune
+//  7. Verify: cmd-b removed
 func TestSyncAddUpdateRemoveCycle(t *testing.T) {
 	repoDir := t.TempDir()
 	configPath := loadTestConfig(t, "e2e-test")
@@ -316,8 +362,8 @@ func TestSyncAddUpdateRemoveCycle(t *testing.T) {
 		t.Fatalf("Failed to delete cmd-b: %v", err)
 	}
 
-	// Step 3: Run repo sync
-	t.Log("Running repo sync...")
+	// Step 3: Run repo sync (no prune)
+	t.Log("Running repo sync without prune...")
 	stdout, stderr, err = runAimgrWithEnv(t, configPath, env, "repo", "sync")
 	if err != nil {
 		t.Fatalf("repo sync failed: %v\nStdout: %s\nStderr: %s", err, stdout, stderr)
@@ -340,11 +386,11 @@ func TestSyncAddUpdateRemoveCycle(t *testing.T) {
 		t.Errorf("sync-cycle-cmd-c should be added by sync: %v", err)
 	}
 
-	// cmd-b should be removed
-	t.Log("Verifying cmd-b removed...")
+	// cmd-b should still exist after non-pruning sync
+	t.Log("Verifying cmd-b preserved without prune...")
 	cmdBPath := filepath.Join(repoDir, "commands", "sync-cycle-cmd-b.md")
-	if _, err := os.Lstat(cmdBPath); err == nil {
-		t.Error("sync-cycle-cmd-b should have been removed by sync")
+	if _, err := os.Lstat(cmdBPath); err != nil {
+		t.Errorf("sync-cycle-cmd-b should still exist after plain sync: %v", err)
 	}
 
 	// Verify metadata for cmd-c exists
@@ -353,11 +399,27 @@ func TestSyncAddUpdateRemoveCycle(t *testing.T) {
 		t.Errorf("Metadata for sync-cycle-cmd-c should exist after sync: %v", err)
 	}
 
-	// Verify metadata for cmd-b is gone
+	// Verify metadata for cmd-b still exists after non-pruning sync
 	cmdBMetaPath := metadata.GetMetadataPath("sync-cycle-cmd-b", resource.Command, repoDir)
-	if _, err := os.Stat(cmdBMetaPath); !os.IsNotExist(err) {
-		t.Errorf("Metadata for sync-cycle-cmd-b should not exist after removal: %v", err)
+	if _, err := os.Stat(cmdBMetaPath); err != nil {
+		t.Errorf("Metadata for sync-cycle-cmd-b should exist after plain sync: %v", err)
 	}
 
-	t.Log("PASS: Full add/update/remove lifecycle works in single sync")
+	// Step 5: Run repo sync --prune and verify stale cmd-b is removed
+	t.Log("Running repo sync with prune...")
+	stdout, stderr, err = runAimgrWithEnv(t, configPath, env, "repo", "sync", "--prune")
+	if err != nil {
+		t.Fatalf("repo sync --prune failed: %v\nStdout: %s\nStderr: %s", err, stdout, stderr)
+	}
+	t.Logf("Prune sync output:\n%s", stdout)
+
+	if _, err := os.Lstat(cmdBPath); err == nil {
+		t.Error("sync-cycle-cmd-b should have been removed by repo sync --prune")
+	}
+
+	if _, err := os.Stat(cmdBMetaPath); !os.IsNotExist(err) {
+		t.Errorf("Metadata for sync-cycle-cmd-b should not exist after prune removal: %v", err)
+	}
+
+	t.Log("PASS: Full add/update/remove lifecycle matches explicit prune semantics")
 }

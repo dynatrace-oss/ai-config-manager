@@ -217,6 +217,7 @@ func collectResourcesBySource(repoPath string) (map[string][]resourceInfo, error
 var (
 	syncSkipExistingFlag bool
 	syncDryRunFlag       bool
+	syncPruneFlag        bool
 	syncFormatFlag       string
 	syncForceFlag        bool
 	syncVerboseFlag      bool
@@ -233,7 +234,7 @@ This command reads sources from the repository's ai.repo.yaml manifest file
 and re-imports all resources from each source. This is useful for:
   - Pulling latest changes from remote repositories
   - Updating symlinked resources from local paths
-  - Cleaning up orphaned resources from removed sources
+  - Reconciling stale source-owned state with --prune when needed
 
 By default, existing resources will be overwritten (force mode). Use --skip-existing
 to skip resources that already exist in the repository.
@@ -242,8 +243,11 @@ The ai.repo.yaml file is automatically maintained when you use "aimgr repo add".
 
 Include filters (set via "aimgr repo add --filter") are stored in ai.repo.yaml
 and respected during sync: only resources matching the include patterns are imported
-for that source. Removing a pattern from include and re-syncing removes the previously
-imported resource. Sources without include filters import all resources.
+for that source. Sources without include filters import all resources.
+
+Use --prune to reconcile stale source-owned resources and packages after include,
+subpath, or discovery changes. Prune cleanup is source-aware and only targets
+resources that no longer match a synced source's effective definition.
 
 Discovery mode (set via "aimgr repo add --discovery") is stored in
 ai.repo.yaml as sources[].discovery and reused during sync. This preserves
@@ -270,7 +274,13 @@ Examples:
   aimgr repo sync --skip-existing
 
   # Preview what would be synced
-  aimgr repo sync --dry-run`,
+  aimgr repo sync --dry-run
+
+  # Reconcile stale source-owned resources/packages
+  aimgr repo sync --prune
+
+  # Preview prune cleanup without changing the repository
+  aimgr repo sync --dry-run --prune`,
 	RunE: runSync,
 }
 
@@ -280,6 +290,7 @@ func init() {
 	// Add flags
 	syncCmd.Flags().BoolVar(&syncSkipExistingFlag, "skip-existing", false, "Skip conflicts silently")
 	syncCmd.Flags().BoolVar(&syncDryRunFlag, "dry-run", false, "Preview without importing")
+	syncCmd.Flags().BoolVar(&syncPruneFlag, "prune", false, "Remove stale source-owned resources/packages after sync reconciliation")
 	syncCmd.Flags().BoolVar(&syncForceFlag, "force", false, "Overwrite existing resources (default: true)")
 	syncCmd.Flags().StringVar(&syncFormatFlag, "format", "table", "Output format: table, json, yaml")
 	syncCmd.Flags().BoolVarP(&syncVerboseFlag, "verbose", "v", false, "Show full per-resource tables (table format only)")
@@ -684,7 +695,7 @@ func detectRemovedForSource(src *repomanifest.Source, sourcePath, repoPath strin
 		sourceKey = src.Name
 	}
 
-	preSyncSet := preSyncResources[sourceKey]
+	preSyncSet := preSyncResourcesForSource(preSyncResources, sourceKey, src.Name)
 	if len(preSyncSet) == 0 {
 		return nil, nil
 	}
@@ -735,11 +746,11 @@ func detectRemovedForSource(src *repomanifest.Source, sourcePath, repoPath strin
 		// cross-source name collisions (bmz1.7). If another source
 		// overwrote this resource during sync, its metadata now
 		// points to the other source — skip removal in that case.
-		belongsToSource := resmeta.HasSource(res.Name, res.Type, sourceKey, repoPath)
+		belongsToSource := resourceBelongsToSource(res.Name, res.Type, sourceKey, src.Name, repoPath)
 		if !belongsToSource && sourceKey != src.Name {
 			// Compatibility path: pre-upgrade metadata may still carry source_name
 			// while sourceKey was remapped to canonical source_id.
-			belongsToSource = resmeta.HasSource(res.Name, res.Type, src.Name, repoPath)
+			belongsToSource = resourceBelongsToSource(res.Name, res.Type, src.Name, src.Name, repoPath)
 		}
 		if !belongsToSource {
 			warnings = append(warnings,
@@ -752,6 +763,53 @@ func detectRemovedForSource(src *repomanifest.Source, sourcePath, repoPath strin
 		removed = append(removed, res)
 	}
 	return removed, warnings
+}
+
+func preSyncResourcesForSource(preSyncResources map[string][]resourceInfo, sourceKey, sourceName string) []resourceInfo {
+	preSyncSet := preSyncResources[sourceKey]
+
+	// Compatibility: legacy metadata may only carry source_name and no source_id.
+	// Merge in source-name keyed inventory so prune can still reconcile stale state.
+	if sourceName != "" && sourceName != sourceKey {
+		preSyncSet = append(preSyncSet, preSyncResources[sourceName]...)
+	}
+
+	if len(preSyncSet) <= 1 {
+		return preSyncSet
+	}
+
+	seen := make(map[string]bool, len(preSyncSet))
+	deduped := make([]resourceInfo, 0, len(preSyncSet))
+	for _, res := range preSyncSet {
+		key := string(res.Type) + "/" + res.Name
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		deduped = append(deduped, res)
+	}
+
+	return deduped
+}
+
+func resourceBelongsToSource(name string, resType resource.ResourceType, sourceIdentifier, sourceName, repoPath string) bool {
+	if resType != resource.PackageType {
+		return resmeta.HasSource(name, resType, sourceIdentifier, repoPath)
+	}
+
+	pkgMeta, err := resmeta.LoadPackageMetadata(name, repoPath)
+	if err != nil {
+		return false
+	}
+
+	if pkgMeta.SourceID != "" && pkgMeta.SourceID == sourceIdentifier {
+		return true
+	}
+	if pkgMeta.SourceName != "" && pkgMeta.SourceName == sourceIdentifier {
+		return true
+	}
+
+	return sourceName != "" && pkgMeta.SourceName == sourceName
 }
 
 // removeOrphanedResources removes resources that are no longer present in their sources,
@@ -775,7 +833,7 @@ func removeOrphanedResources(manager *repo.Manager, removedResources map[string]
 
 	if syncDryRunFlag {
 		if mode.human() {
-			fmt.Printf("\nWould remove %d resource(s) no longer in sources:\n", totalToRemove)
+			fmt.Printf("\nWould prune %d resource(s) no longer in effective source definitions:\n", totalToRemove)
 			for sourceKey, resources := range removedResources {
 				displayName := resolveSourceDisplayName(sourceKey, sourceDisplayNames)
 				for _, res := range resources {
@@ -787,7 +845,7 @@ func removeOrphanedResources(manager *repo.Manager, removedResources map[string]
 	}
 
 	if mode.human() {
-		fmt.Printf("Removing %d resource(s) no longer in sources:\n", totalToRemove)
+		fmt.Printf("Pruning %d resource(s) no longer in effective source definitions:\n", totalToRemove)
 	}
 	var removed []removedResource
 	for sourceKey, resources := range removedResources {
@@ -959,26 +1017,42 @@ func renderSyncOutput(so *syncOutput, format output.Format, verbose bool) error 
 
 // runSync executes the sync command
 func runSync(cmd *cobra.Command, args []string) error {
-	// Create manager
 	manager, err := NewManagerWithLogLevel()
 	if err != nil {
 		return newOperationalFailureError(fmt.Errorf("failed to create repo manager: %w", err))
 	}
 
+	return runSyncWithManager(cmd, manager, false, syncDryRunFlag)
+}
+
+func runSyncWithManager(cmd *cobra.Command, manager *repo.Manager, lockAlreadyHeld bool, overrideDryRun bool) error {
+	effectiveDryRun := syncDryRunFlag
+	if overrideDryRun {
+		effectiveDryRun = true
+	}
+
+	originalSyncDryRun := syncDryRunFlag
+	syncDryRunFlag = effectiveDryRun
+	defer func() {
+		syncDryRunFlag = originalSyncDryRun
+	}()
+
 	if err := ensureRepoInitialized(manager); err != nil {
 		return newOperationalFailureError(err)
 	}
 
-	repoLock, err := manager.AcquireRepoWriteLock(cmd.Context())
-	if err != nil {
-		return wrapLockAcquireError(manager.RepoLockPath(), err)
-	}
-	defer func() {
-		_ = repoLock.Unlock()
-	}()
+	if !lockAlreadyHeld {
+		repoLock, err := manager.AcquireRepoWriteLock(cmd.Context())
+		if err != nil {
+			return wrapLockAcquireError(manager.RepoLockPath(), err)
+		}
+		defer func() {
+			_ = repoLock.Unlock()
+		}()
 
-	if err := maybeHoldAfterRepoLock(cmd.Context(), "sync"); err != nil {
-		return err
+		if err := maybeHoldAfterRepoLock(cmd.Context(), "sync"); err != nil {
+			return err
+		}
 	}
 
 	// Load manifest from ai.repo.yaml
@@ -1016,6 +1090,9 @@ func runSync(cmd *cobra.Command, args []string) error {
 		fmt.Printf("Syncing from %d configured source(s)...\n", len(manifest.Sources))
 		if syncDryRunFlag {
 			fmt.Println("Mode: DRY RUN (preview only)")
+		}
+		if syncPruneFlag {
+			fmt.Println("Prune mode: enabled (--prune)")
 		}
 		fmt.Println()
 	}
@@ -1076,6 +1153,10 @@ func runSync(cmd *cobra.Command, args []string) error {
 			sr.Mode = "local"
 		}
 
+		if mode.human() {
+			fmt.Printf("  Syncing %s (%s)...\n", sr.Name, sr.Mode)
+		}
+
 		// Sync this source (returns resolved source path for scanning)
 		sourcePath, bulkResult, syncErr := syncSource(src, manager)
 		sr.Result = bulkResult
@@ -1094,12 +1175,14 @@ func runSync(cmd *cobra.Command, args []string) error {
 		if sourceKey == "" {
 			sourceKey = src.Name
 		}
-		removed, detectWarnings := detectRemovedForSource(src, sourcePath, repoPath, preSyncResources)
-		if len(removed) > 0 {
-			internalResult.removedResources[sourceKey] = removed
-			sr.RemovedCount = len(removed)
+		if syncPruneFlag {
+			removed, detectWarnings := detectRemovedForSource(src, sourcePath, repoPath, preSyncResources)
+			if len(removed) > 0 {
+				internalResult.removedResources[sourceKey] = removed
+				sr.RemovedCount = len(removed)
+			}
+			warnings = append(warnings, detectWarnings...)
 		}
-		warnings = append(warnings, detectWarnings...)
 
 		// Update last_synced timestamp in metadata after successful sync
 		if !syncDryRunFlag {
@@ -1128,8 +1211,12 @@ func runSync(cmd *cobra.Command, args []string) error {
 	}
 
 	// Remove orphaned resources (bmz1.3)
-	removed, removalWarnings := removeOrphanedResources(manager, internalResult.removedResources, sourceDisplayNames, mode)
-	warnings = append(warnings, removalWarnings...)
+	var removed []removedResource
+	if syncPruneFlag {
+		var removalWarnings []string
+		removed, removalWarnings = removeOrphanedResources(manager, internalResult.removedResources, sourceDisplayNames, mode)
+		warnings = append(warnings, removalWarnings...)
+	}
 
 	// Build the complete sync output struct
 	summary := syncSummary{

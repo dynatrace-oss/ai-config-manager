@@ -506,6 +506,28 @@ func verifyResourcesNotInRepo(t *testing.T, repoPath string, resourceType resour
 	}
 }
 
+func verifyPackagesInRepo(t *testing.T, repoPath string, names ...string) {
+	t.Helper()
+
+	for _, name := range names {
+		path := filepath.Join(repoPath, "packages", name+".package.json")
+		if _, err := os.Lstat(path); err != nil {
+			t.Errorf("package %s not found in repo at %s: %v", name, path, err)
+		}
+	}
+}
+
+func verifyPackagesNotInRepo(t *testing.T, repoPath string, names ...string) {
+	t.Helper()
+
+	for _, name := range names {
+		path := filepath.Join(repoPath, "packages", name+".package.json")
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Errorf("package %s should not exist in repo at %s", name, path)
+		}
+	}
+}
+
 // TestRunSync_SingleSource tests syncing from a single local source
 func TestRunSync_SingleSource(t *testing.T) {
 	source1 := createTestSource(t)
@@ -1107,6 +1129,8 @@ func TestRunSync_IncludeFilterOrphanDetection(t *testing.T) {
 	}
 
 	// Second sync: test-command was previously imported but is now outside include
+	syncPruneFlag = true
+	defer func() { syncPruneFlag = false }()
 	err = runSync(syncCmd, []string{})
 	if err != nil {
 		t.Fatalf("second sync failed: %v", err)
@@ -1117,6 +1141,36 @@ func TestRunSync_IncludeFilterOrphanDetection(t *testing.T) {
 
 	// test-command is no longer in include — must be removed as orphan
 	verifyResourcesNotInRepo(t, repoPath, resource.Command, "test-command")
+}
+
+func TestRunSync_DefaultDoesNotPruneWhenIncludeNarrows(t *testing.T) {
+	sourceDir := createTestSource(t)
+
+	sources := []*repomanifest.Source{{
+		Name:    "non-prune-source",
+		Path:    sourceDir,
+		ID:      "src-non-prune",
+		Include: []string{"command/pdf-command", "command/test-command"},
+	}}
+	repoPath, cleanup := setupTestManifest(t, sources)
+	defer cleanup()
+
+	if err := runSync(syncCmd, []string{}); err != nil {
+		t.Fatalf("first sync failed: %v", err)
+	}
+	verifyResourcesInRepo(t, repoPath, resource.Command, "pdf-command", "test-command")
+
+	sources[0].Include = []string{"command/pdf-command"}
+	manifest := &repomanifest.Manifest{Version: 1, Sources: sources}
+	if err := manifest.Save(repoPath); err != nil {
+		t.Fatalf("failed to save narrowed include manifest: %v", err)
+	}
+
+	if err := runSync(syncCmd, []string{}); err != nil {
+		t.Fatalf("second sync failed: %v", err)
+	}
+
+	verifyResourcesInRepo(t, repoPath, resource.Command, "pdf-command", "test-command")
 }
 
 // TestRunSync_MetadataCommitted verifies that metadata changes are committed to git
@@ -1403,6 +1457,8 @@ func TestRunSync_DetectsRemovedResources(t *testing.T) {
 	}
 
 	// Second sync: should detect AND remove the orphans (bmz1.3)
+	syncPruneFlag = true
+	defer func() { syncPruneFlag = false }()
 	err = runSync(syncCmd, []string{})
 	if err != nil {
 		t.Fatalf("second sync failed: %v", err)
@@ -1458,6 +1514,8 @@ func TestRunSync_FailedSourceExcludedFromRemovalDetection(t *testing.T) {
 
 	// Second sync: should succeed without errors about the failed source
 	// The failed source should NOT trigger removal detection
+	syncPruneFlag = true
+	defer func() { syncPruneFlag = false }()
 	err = runSync(syncCmd, []string{})
 	if err == nil {
 		t.Fatal("expected completed-with-findings error for partial source failure, got nil")
@@ -1811,9 +1869,13 @@ func TestRunSync_DryRunDoesNotRemoveOrphans(t *testing.T) {
 		t.Fatalf("failed to remove command from source: %v", err)
 	}
 
-	// Second sync with --dry-run: should NOT remove the orphan
+	// Second sync with --dry-run --prune: should NOT remove the orphan
 	syncDryRunFlag = true
-	defer func() { syncDryRunFlag = false }()
+	syncPruneFlag = true
+	defer func() {
+		syncDryRunFlag = false
+		syncPruneFlag = false
+	}()
 	err = runSync(syncCmd, []string{})
 	if err != nil {
 		t.Fatalf("dry-run sync failed: %v", err)
@@ -1824,6 +1886,190 @@ func TestRunSync_DryRunDoesNotRemoveOrphans(t *testing.T) {
 	danglingCmd := filepath.Join(repoPath, "commands", "pdf-command.md")
 	if _, err := os.Lstat(danglingCmd); err != nil {
 		t.Errorf("dry-run should NOT have removed pdf-command, but it's gone: %v", err)
+	}
+}
+
+func TestRunSync_DryRunPruneShowsPlannedCleanup(t *testing.T) {
+	sourceDir := createTestSource(t)
+
+	sources := []*repomanifest.Source{{
+		Name: "dryrun-preview-source",
+		Path: sourceDir,
+		ID:   "src-dryrun-preview",
+	}}
+	repoPath, cleanup := setupTestManifest(t, sources)
+	defer cleanup()
+
+	if err := runSync(syncCmd, []string{}); err != nil {
+		t.Fatalf("first sync failed: %v", err)
+	}
+
+	if err := os.Remove(filepath.Join(sourceDir, "commands", "pdf-command.md")); err != nil {
+		t.Fatalf("failed to remove command from source: %v", err)
+	}
+
+	syncDryRunFlag = true
+	syncPruneFlag = true
+	defer func() {
+		syncDryRunFlag = false
+		syncPruneFlag = false
+	}()
+
+	stdout, _ := captureOutput(t, func() {
+		if err := runSync(syncCmd, []string{}); err != nil {
+			t.Fatalf("dry-run prune sync failed: %v", err)
+		}
+	})
+
+	if !strings.Contains(stdout, "Would prune") {
+		t.Fatalf("expected dry-run prune output to include planned prune actions, got:\n%s", stdout)
+	}
+
+	if _, err := os.Lstat(filepath.Join(repoPath, "commands", "pdf-command.md")); err != nil {
+		t.Fatalf("dry-run prune should not mutate repo, expected command to remain: %v", err)
+	}
+}
+
+func TestRunSync_PruneRemovesStalePackages(t *testing.T) {
+	sourceDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(sourceDir, "commands"), 0755); err != nil {
+		t.Fatalf("failed to create commands dir: %v", err)
+	}
+
+	keepCmdContent := "---\ndescription: keep cmd\n---\n# keep-cmd\n"
+	if err := os.WriteFile(filepath.Join(sourceDir, "commands", "keep-cmd.md"), []byte(keepCmdContent), 0644); err != nil {
+		t.Fatalf("failed to write keep command: %v", err)
+	}
+
+	sources := []*repomanifest.Source{{
+		Name: "package-source",
+		Path: sourceDir,
+		ID:   "src-package-prune",
+	}}
+	repoPath, cleanup := setupTestManifest(t, sources)
+	defer cleanup()
+
+	if err := runSync(syncCmd, []string{}); err != nil {
+		t.Fatalf("first sync failed: %v", err)
+	}
+
+	// Seed stale source-owned package state in repo (simulates state left behind
+	// after source include/subpath/discovery changes).
+	stalePkgPath := filepath.Join(repoPath, "packages", "source-bundle.package.json")
+	stalePkgContent := `{"name":"source-bundle","description":"stale","resources":["command/missing-cmd"]}`
+	if err := os.WriteFile(stalePkgPath, []byte(stalePkgContent), 0644); err != nil {
+		t.Fatalf("failed to seed stale package: %v", err)
+	}
+	if err := resmeta.SavePackageMetadata(&resmeta.PackageMetadata{
+		Name:          "source-bundle",
+		SourceType:    "local",
+		SourceURL:     "file://" + sourceDir,
+		SourceName:    sources[0].Name,
+		SourceID:      repomanifest.GenerateSourceID(&repomanifest.Source{Path: sourceDir}),
+		ResourceCount: 1,
+	}, repoPath); err != nil {
+		t.Fatalf("failed to seed stale package metadata: %v", err)
+	}
+
+	if err := runSync(syncCmd, []string{}); err != nil {
+		t.Fatalf("sync without prune failed: %v", err)
+	}
+	verifyPackagesInRepo(t, repoPath, "source-bundle")
+
+	manager := repo.NewManagerWithPath(repoPath)
+	verifyBeforePrune, err := verifyRepository(manager, false, nil)
+	if err != nil {
+		t.Fatalf("verifyRepository before prune failed: %v", err)
+	}
+	if len(verifyBeforePrune.PackagesWithMissingRefs) == 0 {
+		t.Fatalf("expected stale package to trigger repo verify findings before prune")
+	}
+
+	syncPruneFlag = true
+	defer func() { syncPruneFlag = false }()
+	if err := runSync(syncCmd, []string{}); err != nil {
+		t.Fatalf("sync with prune failed: %v", err)
+	}
+
+	verifyPackagesNotInRepo(t, repoPath, "source-bundle")
+
+	verifyAfterPrune, err := verifyRepository(manager, false, nil)
+	if err != nil {
+		t.Fatalf("verifyRepository after prune failed: %v", err)
+	}
+	if len(verifyAfterPrune.PackagesWithMissingRefs) != 0 {
+		t.Fatalf("expected prune to clear stale package verify findings, got %#v", verifyAfterPrune.PackagesWithMissingRefs)
+	}
+}
+
+func TestRunSync_PruneRemovesStalePackagesWithLegacySourceNameMetadata(t *testing.T) {
+	sourceDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(sourceDir, "commands"), 0755); err != nil {
+		t.Fatalf("failed to create commands dir: %v", err)
+	}
+
+	keepCmdContent := "---\ndescription: keep cmd\n---\n# keep-cmd\n"
+	if err := os.WriteFile(filepath.Join(sourceDir, "commands", "keep-cmd.md"), []byte(keepCmdContent), 0644); err != nil {
+		t.Fatalf("failed to write keep command: %v", err)
+	}
+
+	sources := []*repomanifest.Source{{
+		Name: "package-source",
+		Path: sourceDir,
+		ID:   "src-package-prune",
+	}}
+	repoPath, cleanup := setupTestManifest(t, sources)
+	defer cleanup()
+
+	if err := runSync(syncCmd, []string{}); err != nil {
+		t.Fatalf("first sync failed: %v", err)
+	}
+
+	// Seed stale source-owned package state with legacy metadata that only sets
+	// source_name (no source_id).
+	stalePkgPath := filepath.Join(repoPath, "packages", "source-bundle.package.json")
+	stalePkgContent := `{"name":"source-bundle","description":"stale","resources":["command/missing-cmd"]}`
+	if err := os.WriteFile(stalePkgPath, []byte(stalePkgContent), 0644); err != nil {
+		t.Fatalf("failed to seed stale package: %v", err)
+	}
+	if err := resmeta.SavePackageMetadata(&resmeta.PackageMetadata{
+		Name:          "source-bundle",
+		SourceType:    "local",
+		SourceURL:     "file://" + sourceDir,
+		SourceName:    sources[0].Name,
+		ResourceCount: 1,
+	}, repoPath); err != nil {
+		t.Fatalf("failed to seed stale package metadata: %v", err)
+	}
+
+	if err := runSync(syncCmd, []string{}); err != nil {
+		t.Fatalf("sync without prune failed: %v", err)
+	}
+	verifyPackagesInRepo(t, repoPath, "source-bundle")
+
+	manager := repo.NewManagerWithPath(repoPath)
+	verifyBeforePrune, err := verifyRepository(manager, false, nil)
+	if err != nil {
+		t.Fatalf("verifyRepository before prune failed: %v", err)
+	}
+	if len(verifyBeforePrune.PackagesWithMissingRefs) == 0 {
+		t.Fatalf("expected stale package to trigger repo verify findings before prune")
+	}
+
+	syncPruneFlag = true
+	defer func() { syncPruneFlag = false }()
+	if err := runSync(syncCmd, []string{}); err != nil {
+		t.Fatalf("sync with prune failed: %v", err)
+	}
+
+	verifyPackagesNotInRepo(t, repoPath, "source-bundle")
+
+	verifyAfterPrune, err := verifyRepository(manager, false, nil)
+	if err != nil {
+		t.Fatalf("verifyRepository after prune failed: %v", err)
+	}
+	if len(verifyAfterPrune.PackagesWithMissingRefs) != 0 {
+		t.Fatalf("expected prune to clear stale package verify findings, got %#v", verifyAfterPrune.PackagesWithMissingRefs)
 	}
 }
 
@@ -2369,6 +2615,8 @@ func TestRunSync_RemovesOrphansWithGitCommit(t *testing.T) {
 	}
 
 	// Second sync: should remove orphans and commit
+	syncPruneFlag = true
+	defer func() { syncPruneFlag = false }()
 	err = runSync(syncCmd, []string{})
 	if err != nil {
 		t.Fatalf("second sync failed: %v", err)
@@ -2454,6 +2702,8 @@ func TestRunSync_RemovalOnlyForSuccessfulSources(t *testing.T) {
 
 	// Second sync: source A succeeds, source B fails
 	// Source B's resources should NOT be removed because source B failed
+	syncPruneFlag = true
+	defer func() { syncPruneFlag = false }()
 	err = runSync(syncCmd, []string{})
 	if err == nil {
 		t.Fatal("expected completed-with-findings error for partial source failure, got nil")
@@ -2817,5 +3067,56 @@ func TestDetectRemovedForSource_RespectsMarketplaceDiscoveryMode(t *testing.T) {
 	}
 	if removedSet["command/plugin-command"] {
 		t.Fatalf("did not expect plugin-command to be marked removed; removed=%#v", removed)
+	}
+}
+
+func TestResourceBelongsToSource_PackageUsesPackageMetadata(t *testing.T) {
+	repoPath := t.TempDir()
+
+	if err := resmeta.SavePackageMetadata(&resmeta.PackageMetadata{
+		Name:       "team-bundle",
+		SourceName: "team-source",
+		SourceID:   "src-team",
+	}, repoPath); err != nil {
+		t.Fatalf("failed to save package metadata: %v", err)
+	}
+
+	if !resourceBelongsToSource("team-bundle", resource.PackageType, "src-team", "team-source", repoPath) {
+		t.Fatalf("expected package to match by source ID")
+	}
+	if !resourceBelongsToSource("team-bundle", resource.PackageType, "team-source", "team-source", repoPath) {
+		t.Fatalf("expected package to match by source name")
+	}
+	if resourceBelongsToSource("team-bundle", resource.PackageType, "src-other", "other-source", repoPath) {
+		t.Fatalf("did not expect package to match different source")
+	}
+}
+
+func TestPreSyncResourcesForSource_IncludesLegacySourceNameEntries(t *testing.T) {
+	preSyncResources := map[string][]resourceInfo{
+		"src-package-prune": {
+			{Name: "id-owned", Type: resource.Command},
+			{Name: "shared", Type: resource.PackageType},
+		},
+		"package-source": {
+			{Name: "name-owned", Type: resource.PackageType},
+			{Name: "shared", Type: resource.PackageType},
+		},
+	}
+
+	merged := preSyncResourcesForSource(preSyncResources, "src-package-prune", "package-source")
+
+	got := make(map[string]bool, len(merged))
+	for _, res := range merged {
+		got[string(res.Type)+"/"+res.Name] = true
+	}
+
+	for _, expected := range []string{"command/id-owned", "package/name-owned", "package/shared"} {
+		if !got[expected] {
+			t.Fatalf("expected merged set to contain %q, got %#v", expected, got)
+		}
+	}
+	if len(got) != 3 {
+		t.Fatalf("expected deduplicated merged set of size 3, got %d (%#v)", len(got), got)
 	}
 }

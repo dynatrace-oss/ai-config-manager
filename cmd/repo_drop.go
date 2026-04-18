@@ -87,6 +87,10 @@ func runDrop(cmd *cobra.Command, args []string) error {
 
 // performSoftDrop removes all resources but keeps ai.repo.yaml, .git/, and directory structure
 func performSoftDrop(mgr *repo.Manager) error {
+	return performSoftDropWithHint(mgr, true)
+}
+
+func performSoftDropWithHint(mgr *repo.Manager, includeSyncHint bool) error {
 	if err := mgr.Drop(); err != nil {
 		return err
 	}
@@ -95,7 +99,9 @@ func performSoftDrop(mgr *repo.Manager) error {
 	fmt.Println("  Removed imported resources and local sync state")
 	fmt.Println("  Preserved ai.repo.yaml source definitions")
 	fmt.Println("  Cleared workspace caches (.workspace/) except lock files")
-	fmt.Println("  Run 'aimgr repo sync' to re-import from configured sources")
+	if includeSyncHint {
+		fmt.Println("  Run 'aimgr repo sync' to re-import from configured sources")
+	}
 	return nil
 }
 

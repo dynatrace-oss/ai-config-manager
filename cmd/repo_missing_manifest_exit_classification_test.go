@@ -32,6 +32,12 @@ func TestManifestRequiredCommands_MissingManifest_OperationalExitClassification(
 			expectsSilenceOn: true,
 		},
 		{
+			name:             "repo rebuild",
+			command:          repoRebuildCmd,
+			run:              func(cmd *cobra.Command) error { return runRebuild(cmd, []string{}) },
+			expectsSilenceOn: true,
+		},
+		{
 			name:             "repo show-manifest",
 			command:          repoShowManifestCmd,
 			run:              func(cmd *cobra.Command) error { return runShowManifest(cmd, nil) },
