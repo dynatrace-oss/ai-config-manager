@@ -285,61 +285,19 @@ func installFromManifest() error {
 	installingFromManifest = true
 	defer func() { installingFromManifest = false }()
 
-	// Get project path
-	projectPath := projectPathFlag
-	if projectPath == "" {
-		var err error
-		projectPath, err = os.Getwd()
-		if err != nil {
-			return fmt.Errorf("failed to get current directory: %w", err)
-		}
-	}
-
-	// Create repo manager early to initialize logging
-	manager, err := NewManagerWithLogLevel()
-	if err != nil {
-		return fmt.Errorf("failed to create repository manager: %w", err)
-	}
-
-	// Load effective project manifest (base + optional local overlay) before any
-	// repository lock or initialization checks so we can choose the correct lock
-	// mode for source bootstrap flows.
-	m, view, err := loadEffectiveProjectManifest(projectPath)
+	state, err := prepareManifestInstallState()
 	if err != nil {
 		return err
 	}
-	if m == nil {
-		return fmt.Errorf("no resources specified and neither %s nor %s found\n\nTo install resources, either:\n  1. Specify resources: aimgr install skill/pdf-processing\n  2. Create %s in current directory", manifest.ManifestFileName, manifest.LocalManifestFileName, manifest.ManifestFileName)
+	if err := validateManifestInstallRepository(state); err != nil {
+		return err
 	}
 
-	hasManifestSources := len(m.Sources) > 0
+	printManifestInstallReadBanner(state.view)
 
-	repoExists, err := repoPathExists(manager.GetRepoPath())
+	repoLock, err := acquireManifestInstallRepoLock(state)
 	if err != nil {
-		return fmt.Errorf("failed to inspect repository state: %w", err)
-	}
-	if !repoExists && !hasManifestSources {
-		return fmt.Errorf("repository is not initialized at %s; run 'aimgr repo init' or 'aimgr repo apply-manifest <path-or-url>' first", manager.GetRepoPath())
-	}
-
-	if view.Local != nil {
-		fmt.Printf("Reading %s + %s...\n", manifest.ManifestFileName, manifest.LocalManifestFileName)
-	} else {
-		fmt.Printf("Reading %s...\n", manifest.ManifestFileName)
-	}
-
-	// Acquire a write lock when install may bootstrap/sync sources.
-	var repoLock unlocker
-	if hasManifestSources {
-		repoLock, err = manager.AcquireRepoWriteLock(context.Background())
-		if err != nil {
-			return fmt.Errorf("failed to acquire repository lock at %s: %w", manager.RepoLockPath(), err)
-		}
-	} else {
-		repoLock, err = manager.AcquireRepoReadLock(context.Background())
-		if err != nil {
-			return fmt.Errorf("failed to acquire repository read lock at %s: %w", manager.RepoLockPath(), err)
-		}
+		return err
 	}
 	defer func() {
 		_ = repoLock.Unlock()
@@ -349,123 +307,48 @@ func installFromManifest() error {
 		return err
 	}
 
-	if !repoExists {
-		if !hasManifestSources {
-			return fmt.Errorf("repository is not initialized at %s; run 'aimgr repo init' or 'aimgr repo apply-manifest <path-or-url>' first", manager.GetRepoPath())
-		}
-
-		if err := manager.Init(); err != nil {
-			return fmt.Errorf("failed to initialize repository for install source bootstrap: %w", err)
-		}
+	if err := ensureManifestInstallRepository(state); err != nil {
+		return err
 	}
 
-	if hasManifestSources {
-		bootstrapResult, bootstrapErr := bootstrapManifestSourcesForInstall(manager, m)
+	if state.hasManifestSources() {
+		bootstrapResult, bootstrapErr := bootstrapManifestSourcesForInstall(state.manager, state.manifest)
 		if bootstrapErr != nil {
 			return bootstrapErr
 		}
 
-		if err := failIfReusedSourceIncludeMismatch(manager, m, bootstrapResult.reusedSources); err != nil {
+		if err := failIfReusedSourceIncludeMismatch(state.manager, state.manifest, bootstrapResult.reusedSources); err != nil {
 			return err
 		}
 	}
 
 	// Check if manifest has any resources
-	if len(m.Resources) == 0 {
+	if len(state.manifest.Resources) == 0 {
 		fmt.Printf("No resources defined in %s\n", manifest.ManifestFileName)
 		return nil
 	}
 
-	fmt.Printf("Installing %d resources...\n", len(m.Resources))
+	fmt.Printf("Installing %d resources...\n", len(state.manifest.Resources))
 
-	// Parse target flag or use manifest targets
-	var targetTools []tools.Tool
-	explicitTargets, err := parseTargetFlag(installTargetFlag)
+	targetTools, err := resolveManifestInstallTargets(state.manifest)
 	if err != nil {
 		return err
 	}
 
-	if explicitTargets != nil {
-		// Use explicit --target flag
-		targetTools = explicitTargets
-	} else if len(m.Install.Targets) > 0 {
-		// Use manifest targets
-		for _, t := range m.Install.Targets {
-			tool, err := tools.ParseTool(t)
-			if err != nil {
-				return fmt.Errorf("invalid target in manifest '%s': %w", t, err)
-			}
-			targetTools = append(targetTools, tool)
-		}
-	}
-
-	// Create installer
-	var installer *install.Installer
-	if targetTools != nil {
-		installer, err = install.NewInstallerWithTargets(projectPath, targetTools)
-	} else {
-		// Use defaults from config
-		cfg, cfgErr := config.LoadGlobal()
-		if cfgErr != nil {
-			return fmt.Errorf("failed to load config: %w", cfgErr)
-		}
-		defaultTargets, tgtErr := cfg.GetDefaultTargets()
-		if tgtErr != nil {
-			return fmt.Errorf("invalid default targets in config: %w", tgtErr)
-		}
-		installer, err = install.NewInstaller(projectPath, defaultTargets)
-	}
+	installer, err := newManifestInstaller(state.projectPath, targetTools)
 	if err != nil {
-		return fmt.Errorf("failed to create installer: %w", err)
+		return err
 	}
 
-	// Track results
-	var results []installResult
-
-	// Process each resource - expand packages first
-	for _, resourceRef := range m.Resources {
-		// Check if this is a package reference
-		if strings.HasPrefix(resourceRef, "package/") {
-			packageName := strings.TrimPrefix(resourceRef, "package/")
-
-			// Load package
-			repoPath := manager.GetRepoPath()
-			pkgPath := resource.GetPackagePath(packageName, repoPath)
-			pkg, err := resource.LoadPackage(pkgPath)
-			if err != nil {
-				// Package not found - record error
-				result := installResult{
-					name:    resourceRef,
-					success: false,
-					message: fmt.Sprintf("package '%s' not found in repository", packageName),
-				}
-				results = append(results, result)
-				continue
-			}
-
-			fmt.Printf("Expanding package '%s' (%d resources)...\n", packageName, len(pkg.Resources))
-
-			// Install each resource from the package
-			for _, pkgResourceRef := range pkg.Resources {
-				result := processInstall(pkgResourceRef, installer, manager)
-				results = append(results, result)
-			}
-		} else {
-			// Normal resource (not a package)
-			result := processInstall(resourceRef, installer, manager)
-			results = append(results, result)
-		}
-	}
+	results := installResourcesFromManifest(state.manifest, installer, state.manager)
 
 	// Print results
 	fmt.Println()
 	printInstallSummary(results)
 
 	// Return error if any resource failed
-	for _, result := range results {
-		if !result.success && !result.skipped {
-			return fmt.Errorf("some resources failed to install")
-		}
+	if installResultsContainFailures(results) {
+		return fmt.Errorf("some resources failed to install")
 	}
 
 	return nil
@@ -477,6 +360,206 @@ type unlocker interface {
 
 type installSourceBootstrapResult struct {
 	reusedSources []*repomanifest.Source
+}
+
+type manifestInstallState struct {
+	projectPath string
+	manager     *repo.Manager
+	manifest    *manifest.Manifest
+	view        *manifest.ProjectManifests
+	repoExists  bool
+}
+
+func (s *manifestInstallState) hasManifestSources() bool {
+	return s != nil && s.manifest != nil && len(s.manifest.Sources) > 0
+}
+
+func resolveInstallProjectPath() (string, error) {
+	projectPath := projectPathFlag
+	if projectPath != "" {
+		return projectPath, nil
+	}
+
+	projectPath, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("failed to get current directory: %w", err)
+	}
+
+	return projectPath, nil
+}
+
+func prepareManifestInstallState() (*manifestInstallState, error) {
+	projectPath, err := resolveInstallProjectPath()
+	if err != nil {
+		return nil, err
+	}
+
+	manager, err := NewManagerWithLogLevel()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create repository manager: %w", err)
+	}
+
+	m, view, err := loadEffectiveProjectManifest(projectPath)
+	if err != nil {
+		return nil, err
+	}
+	if m == nil {
+		return nil, fmt.Errorf("no resources specified and neither %s nor %s found\n\nTo install resources, either:\n  1. Specify resources: aimgr install skill/pdf-processing\n  2. Create %s in current directory", manifest.ManifestFileName, manifest.LocalManifestFileName, manifest.ManifestFileName)
+	}
+
+	repoExists, err := repoPathExists(manager.GetRepoPath())
+	if err != nil {
+		return nil, fmt.Errorf("failed to inspect repository state: %w", err)
+	}
+
+	return &manifestInstallState{
+		projectPath: projectPath,
+		manager:     manager,
+		manifest:    m,
+		view:        view,
+		repoExists:  repoExists,
+	}, nil
+}
+
+func validateManifestInstallRepository(state *manifestInstallState) error {
+	if state.repoExists || state.hasManifestSources() {
+		return nil
+	}
+
+	return fmt.Errorf("repository is not initialized at %s; run 'aimgr repo init' or 'aimgr repo apply-manifest <path-or-url>' first", state.manager.GetRepoPath())
+}
+
+func printManifestInstallReadBanner(view *manifest.ProjectManifests) {
+	if view != nil && view.Local != nil {
+		fmt.Printf("Reading %s + %s...\n", manifest.ManifestFileName, manifest.LocalManifestFileName)
+		return
+	}
+
+	fmt.Printf("Reading %s...\n", manifest.ManifestFileName)
+}
+
+func acquireManifestInstallRepoLock(state *manifestInstallState) (unlocker, error) {
+	if state.hasManifestSources() {
+		repoLock, err := state.manager.AcquireRepoWriteLock(context.Background())
+		if err != nil {
+			return nil, fmt.Errorf("failed to acquire repository lock at %s: %w", state.manager.RepoLockPath(), err)
+		}
+		return repoLock, nil
+	}
+
+	repoLock, err := state.manager.AcquireRepoReadLock(context.Background())
+	if err != nil {
+		return nil, fmt.Errorf("failed to acquire repository read lock at %s: %w", state.manager.RepoLockPath(), err)
+	}
+
+	return repoLock, nil
+}
+
+func ensureManifestInstallRepository(state *manifestInstallState) error {
+	if state.repoExists {
+		return nil
+	}
+	if !state.hasManifestSources() {
+		return fmt.Errorf("repository is not initialized at %s; run 'aimgr repo init' or 'aimgr repo apply-manifest <path-or-url>' first", state.manager.GetRepoPath())
+	}
+
+	if err := state.manager.Init(); err != nil {
+		return fmt.Errorf("failed to initialize repository for install source bootstrap: %w", err)
+	}
+
+	return nil
+}
+
+func resolveManifestInstallTargets(m *manifest.Manifest) ([]tools.Tool, error) {
+	explicitTargets, err := parseTargetFlag(installTargetFlag)
+	if err != nil {
+		return nil, err
+	}
+	if explicitTargets != nil {
+		return explicitTargets, nil
+	}
+
+	var targetTools []tools.Tool
+	for _, t := range m.Install.Targets {
+		tool, parseErr := tools.ParseTool(t)
+		if parseErr != nil {
+			return nil, fmt.Errorf("invalid target in manifest '%s': %w", t, parseErr)
+		}
+		targetTools = append(targetTools, tool)
+	}
+
+	return targetTools, nil
+}
+
+func newManifestInstaller(projectPath string, targetTools []tools.Tool) (*install.Installer, error) {
+	if targetTools != nil {
+		installer, err := install.NewInstallerWithTargets(projectPath, targetTools)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create installer: %w", err)
+		}
+		return installer, nil
+	}
+
+	cfg, err := config.LoadGlobal()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load config: %w", err)
+	}
+	defaultTargets, err := cfg.GetDefaultTargets()
+	if err != nil {
+		return nil, fmt.Errorf("invalid default targets in config: %w", err)
+	}
+
+	installer, err := install.NewInstaller(projectPath, defaultTargets)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create installer: %w", err)
+	}
+
+	return installer, nil
+}
+
+func installResourcesFromManifest(m *manifest.Manifest, installer *install.Installer, manager *repo.Manager) []installResult {
+	results := make([]installResult, 0, len(m.Resources))
+	for _, resourceRef := range m.Resources {
+		results = append(results, installManifestResource(resourceRef, installer, manager)...)
+	}
+	return results
+}
+
+func installManifestResource(resourceRef string, installer *install.Installer, manager *repo.Manager) []installResult {
+	if !strings.HasPrefix(resourceRef, "package/") {
+		return []installResult{processInstall(resourceRef, installer, manager)}
+	}
+
+	packageName := strings.TrimPrefix(resourceRef, "package/")
+	repoPath := manager.GetRepoPath()
+	pkgPath := resource.GetPackagePath(packageName, repoPath)
+	pkg, err := resource.LoadPackage(pkgPath)
+	if err != nil {
+		return []installResult{{
+			name:    resourceRef,
+			success: false,
+			message: fmt.Sprintf("package '%s' not found in repository", packageName),
+		}}
+	}
+
+	fmt.Printf("Expanding package '%s' (%d resources)...\n", packageName, len(pkg.Resources))
+
+	results := make([]installResult, 0, len(pkg.Resources))
+	for _, pkgResourceRef := range pkg.Resources {
+		results = append(results, processInstall(pkgResourceRef, installer, manager))
+	}
+
+	return results
+}
+
+func installResultsContainFailures(results []installResult) bool {
+	for _, result := range results {
+		if !result.success && !result.skipped {
+			return true
+		}
+	}
+
+	return false
 }
 
 func bootstrapManifestSourcesForInstall(manager *repo.Manager, m *manifest.Manifest) (*installSourceBootstrapResult, error) {

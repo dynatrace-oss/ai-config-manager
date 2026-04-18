@@ -5,130 +5,52 @@
 ### Prerequisites
 
 - **Go 1.25.6+** (or use [mise](https://mise.jdx.dev/) for automatic version management)
-- **Make** (build automation)
-- **Git** (version control)
+- **Make**
+- **Git**
 
-### Setup
+### Clone, build, and test
 
 ```bash
-# Clone the repository
 git clone https://github.com/dynatrace-oss/ai-config-manager.git
 cd ai-config-manager
 
-# Build the binary
 make build
 
-# Run the baseline contributor test suite
+# Baseline contributor checks
 make test
 ```
 
-### Installation Paths by Operating System
+If your local install path matters, run `make os-info` before `make install`.
+For PATH setup, IDE notes, and longer environment guidance, use [docs/contributor-guide/development-environment.md](docs/contributor-guide/development-environment.md).
 
-The `make install` target automatically detects your OS and installs the `aimgr` binary to the appropriate location:
+## Where guidance lives
 
-#### macOS
+Use this file as the contributor front door, then switch to the focused docs for repository-local rules.
 
-- **Install Path**: `/usr/local/bin`
-- **Why this location**: 
-  - Already in your system PATH (no manual PATH configuration needed)
-  - Used by Homebrew and other package managers
-  - Works with shell completion out of the box
-  - No `sudo` required (if `/usr/local/bin` exists)
-- **Shell Completion**: Install the binary first, then set up completions separately with `aimgr completion <shell>`
-- **Command**: `make install` → binary at `/usr/local/bin/aimgr`
+| Need | Read |
+| --- | --- |
+| Repository architecture and repo map | [docs/OVERVIEW.md](docs/OVERVIEW.md) |
+| Implementation constraints and safety rules | [docs/CODING.md](docs/CODING.md) |
+| Minimum checks and test-layer policy | [docs/TESTING.md](docs/TESTING.md) |
+| Branch, commit, push, PR, and merge workflow | [docs/CHANGE-WORKFLOW.md](docs/CHANGE-WORKFLOW.md) |
+| Longer setup/examples/background | [docs/contributor-guide/README.md](docs/contributor-guide/README.md) |
 
-#### Linux (Ubuntu, Arch, etc.)
+## Contributor flow
 
-- **Install Path**: `~/.local/bin` (XDG Base Directory standard)
-- **Why this location**:
-  - User-specific installation (no `sudo` required)
-  - Follows XDG Base Directory Specification
-  - Keeps system directories clean
-- **Note**: You may need to add `~/.local/bin` to your PATH if not already present:
-  ```bash
-  export PATH="$HOME/.local/bin:$PATH"
-  ```
-  Add this line to your `~/.bashrc`, `~/.zshrc`, or equivalent shell config file.
-- **Command**: `make install` → binary at `~/.local/bin/aimgr`
+1. Choose the landing path in [docs/CHANGE-WORKFLOW.md](docs/CHANGE-WORKFLOW.md).
+2. Use [docs/CODING.md](docs/CODING.md) while implementing repository-local changes.
+3. Run the minimum checks from [docs/TESTING.md](docs/TESTING.md).
+4. Update docs in the same change when commands, paths, workflows, or user-facing behavior changed.
+5. Commit with the conventional commit format below.
 
-#### Windows (experimental support)
-
-- **Install Path**: `%USERPROFILE%\AppData\Local\bin`
-- **Note**: Windows support is prepared but may require additional testing
-
-#### Checking Your Installation
-
-After running `make install`, verify the installation:
-
-```bash
-# Show where the binary was installed
-make os-info
-
-# Verify the binary works
-aimgr --version
-```
-
-If `aimgr` is not found, add the install path to your PATH environment variable or run the binary with its full path.
-
-### Verify Your Setup
-
-```bash
-# Check Go version
-go version  # Should show 1.25.6 or higher
-
-# Build and test
-make build
-make test   # Should pass the baseline contributor checks
-```
-
-## Development Workflow
-
-### 1. Fork and Clone
-
-1. Fork the repository on GitHub
-2. Clone your fork locally
-3. Add upstream remote:
-   ```bash
-   git remote add upstream https://github.com/dynatrace-oss/ai-config-manager.git
-   ```
-
-### 2. Create a Feature Branch
-
-```bash
-git checkout -b feature/your-feature-name
-```
-
-### 3. Make Changes
-
-1. Write your code
-2. Add tests for new functionality
-3. Follow [docs/CODING.md](docs/CODING.md) for repository-specific implementation rules
-4. Run tests frequently: `make test`
-
-### 4. Commit Your Changes
-
-Follow conventional commit format (see below)
-
-### 5. Land the Change
-
-Use [docs/CHANGE-WORKFLOW.md](docs/CHANGE-WORKFLOW.md) to choose the right landing path for this change.
-
-If you are publishing a feature branch, push it with:
-
-```bash
-git push -u origin feature/your-feature-name
-```
-
-## Submitting Changes
-
-### Before Submitting
+## Before submitting
 
 - [ ] Minimum checks from [docs/TESTING.md](docs/TESTING.md) passed for the change type
-- [ ] New code has tests
+- [ ] New code has tests when behavior changed
 - [ ] Documentation updated when commands, workflows, or user-facing behavior changed
 - [ ] Commit messages follow the format below
 
-### Commit Message Format
+## Commit Message Format
 
 Use conventional commits:
 
@@ -166,11 +88,7 @@ fix(install): handle symlink creation on Windows
 Use junction points instead of symlinks for Windows compatibility.
 ```
 
-### Change Landing
-
-Read **[docs/CHANGE-WORKFLOW.md](docs/CHANGE-WORKFLOW.md)** for commit, push, branch, PR, review, and merge expectations.
-
-## Deeper Docs
+## Focused repo docs
 
 Use the focused project docs when you need repository-local detail:
 

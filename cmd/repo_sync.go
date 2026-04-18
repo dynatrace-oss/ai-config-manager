@@ -685,6 +685,273 @@ type syncResult struct {
 	removedResources map[string][]resourceInfo
 }
 
+type syncRunState struct {
+	manifest           *repomanifest.Manifest
+	metadata           *sourcemetadata.SourceMetadata
+	format             output.Format
+	mode               syncOutputMode
+	repoPath           string
+	sourceDisplayNames map[string]string
+	preSyncResources   map[string][]resourceInfo
+	warnings           []string
+}
+
+func applySyncDryRunOverride(overrideDryRun bool) func() {
+	effectiveDryRun := syncDryRunFlag
+	if overrideDryRun {
+		effectiveDryRun = true
+	}
+
+	originalSyncDryRun := syncDryRunFlag
+	syncDryRunFlag = effectiveDryRun
+
+	return func() {
+		syncDryRunFlag = originalSyncDryRun
+	}
+}
+
+func acquireSyncRunLock(cmd *cobra.Command, manager *repo.Manager, lockAlreadyHeld bool) (unlocker, error) {
+	if lockAlreadyHeld {
+		return nil, nil
+	}
+
+	repoLock, err := manager.AcquireRepoWriteLock(cmd.Context())
+	if err != nil {
+		return nil, wrapLockAcquireError(manager.RepoLockPath(), err)
+	}
+	if err := maybeHoldAfterRepoLock(cmd.Context(), "sync"); err != nil {
+		_ = repoLock.Unlock()
+		return nil, err
+	}
+
+	return repoLock, nil
+}
+
+func emptySourceMetadata() *sourcemetadata.SourceMetadata {
+	return &sourcemetadata.SourceMetadata{
+		Version: 1,
+		Sources: make(map[string]*sourcemetadata.SourceState),
+	}
+}
+
+func loadSyncMetadata(repoPath string) *sourcemetadata.SourceMetadata {
+	metadata, err := sourcemetadata.Load(repoPath)
+	if err == nil {
+		return metadata
+	}
+
+	return emptySourceMetadata()
+}
+
+func collectPreSyncInventoryForSync(repoPath string, manifest *repomanifest.Manifest) (map[string][]resourceInfo, []string) {
+	preSyncResources, err := collectResourcesBySource(repoPath)
+	if err != nil {
+		return make(map[string][]resourceInfo), []string{fmt.Sprintf("could not collect pre-sync inventory: %v", err)}
+	}
+
+	remapLegacyRemoteSourceIDs(preSyncResources, manifest)
+	return preSyncResources, nil
+}
+
+func prepareSyncRunState(manager *repo.Manager) (*syncRunState, error) {
+	if err := ensureRepoInitialized(manager); err != nil {
+		return nil, newOperationalFailureError(err)
+	}
+
+	manifest, err := repomanifest.LoadForMutation(manager.GetRepoPath())
+	if err != nil {
+		return nil, newOperationalFailureError(fmt.Errorf("failed to load manifest: %w", err))
+	}
+	if err := detectSyncResourceCollisions(manifest, manager); err != nil {
+		return nil, newOperationalFailureError(err)
+	}
+	if len(manifest.Sources) == 0 {
+		return nil, newOperationalFailureError(fmt.Errorf("no sync sources configured\n\nAdd sources using:\n  aimgr repo add <source>\n\nSources are automatically tracked in ai.repo.yaml"))
+	}
+
+	format, err := output.ParseFormat(syncFormatFlag)
+	if err != nil {
+		return nil, newOperationalFailureError(err)
+	}
+
+	repoPath := manager.GetRepoPath()
+	preSyncResources, warnings := collectPreSyncInventoryForSync(repoPath, manifest)
+
+	return &syncRunState{
+		manifest:           manifest,
+		metadata:           loadSyncMetadata(repoPath),
+		format:             format,
+		mode:               syncOutputMode{format: format, verbose: syncVerboseFlag},
+		repoPath:           repoPath,
+		sourceDisplayNames: buildSourceDisplayNames(manifest.Sources),
+		preSyncResources:   preSyncResources,
+		warnings:           warnings,
+	}, nil
+}
+
+func printSyncStart(state *syncRunState) {
+	if !state.mode.human() {
+		return
+	}
+
+	fmt.Printf("Syncing from %d configured source(s)...\n", len(state.manifest.Sources))
+	if syncDryRunFlag {
+		fmt.Println("Mode: DRY RUN (preview only)")
+	}
+	if syncPruneFlag {
+		fmt.Println("Prune mode: enabled (--prune)")
+	}
+	fmt.Println()
+}
+
+func applySyncOperationFlags() func() {
+	originalForceFlag := forceFlag
+	originalDryRunFlag := dryRunFlag
+	originalSkipExistingFlag := skipExistingFlag
+	originalAddFormatFlag := addFormatFlag
+	originalSyncSilentMode := syncSilentMode
+
+	forceFlag = !syncSkipExistingFlag
+	skipExistingFlag = syncSkipExistingFlag
+	dryRunFlag = syncDryRunFlag
+	addFormatFlag = syncFormatFlag
+	syncSilentMode = true
+
+	return func() {
+		forceFlag = originalForceFlag
+		dryRunFlag = originalDryRunFlag
+		skipExistingFlag = originalSkipExistingFlag
+		addFormatFlag = originalAddFormatFlag
+		syncSilentMode = originalSyncSilentMode
+	}
+}
+
+func buildSourceSyncResult(src *repomanifest.Source) sourceSyncResult {
+	sr := sourceSyncResult{Name: src.Name}
+	if src.URL != "" {
+		sr.URL = src.URL
+		sr.Mode = "remote"
+		return sr
+	}
+
+	sr.Path = src.Path
+	sr.Mode = "local"
+	return sr
+}
+
+func updateSourceMetadataAfterSync(metadata *sourcemetadata.SourceMetadata, src *repomanifest.Source) {
+	now := time.Now()
+	canonicalID := canonicalSourceID(src)
+	if state, ok := metadata.Sources[src.Name]; ok {
+		state.LastSynced = now
+		if canonicalID != "" {
+			state.SourceID = canonicalID
+		}
+		return
+	}
+
+	metadata.Sources[src.Name] = &sourcemetadata.SourceState{
+		SourceID:   canonicalID,
+		Added:      now,
+		LastSynced: now,
+	}
+}
+
+func syncManifestSources(state *syncRunState, manager *repo.Manager) ([]sourceSyncResult, syncResult, []string) {
+	internalResult := syncResult{
+		failedSources:    make([]string, 0),
+		removedResources: make(map[string][]resourceInfo),
+	}
+
+	sourceResults := make([]sourceSyncResult, 0, len(state.manifest.Sources))
+	var warnings []string
+
+	for _, src := range state.manifest.Sources {
+		sr := buildSourceSyncResult(src)
+		if state.mode.human() {
+			fmt.Printf("  Syncing %s (%s)...\n", sr.Name, sr.Mode)
+		}
+
+		sourcePath, bulkResult, syncErr := syncSource(src, manager)
+		sr.Result = bulkResult
+		if syncErr != nil {
+			sr.Failed = true
+			sr.Error = syncErr.Error()
+			internalResult.sourcesFailed++
+			internalResult.failedSources = append(internalResult.failedSources, src.Name)
+			sourceResults = append(sourceResults, sr)
+			continue
+		}
+
+		sourceKey := canonicalSourceID(src)
+		if sourceKey == "" {
+			sourceKey = src.Name
+		}
+		if syncPruneFlag {
+			removed, detectWarnings := detectRemovedForSource(src, sourcePath, state.repoPath, state.preSyncResources)
+			if len(removed) > 0 {
+				internalResult.removedResources[sourceKey] = removed
+				sr.RemovedCount = len(removed)
+			}
+			warnings = append(warnings, detectWarnings...)
+		}
+
+		if !syncDryRunFlag {
+			updateSourceMetadataAfterSync(state.metadata, src)
+		}
+
+		internalResult.sourcesProcessed++
+		sourceResults = append(sourceResults, sr)
+	}
+
+	return sourceResults, internalResult, warnings
+}
+
+func buildSyncOutput(sourceResults []sourceSyncResult, removed []removedResource, warnings []string, sourcesTotal int) *syncOutput {
+	summary := syncSummary{
+		SourcesTotal:     sourcesTotal,
+		ResourcesRemoved: len(removed),
+	}
+	for _, sr := range sourceResults {
+		if sr.Failed {
+			summary.SourcesFailed++
+			continue
+		}
+
+		summary.SourcesSynced++
+		if sr.Result == nil {
+			continue
+		}
+
+		summary.ResourcesAdded += len(sr.Result.Added)
+		summary.ResourcesUpdated += len(sr.Result.Updated)
+		summary.ResourcesFailed += len(sr.Result.Failed)
+	}
+
+	so := &syncOutput{
+		Sources:  sourceResults,
+		Removed:  removed,
+		Summary:  summary,
+		Warnings: warnings,
+	}
+	if so.Removed == nil {
+		so.Removed = []removedResource{}
+	}
+
+	return so
+}
+
+func syncCompletionError(failedSources, totalSources int) error {
+	if failedSources == 0 {
+		return nil
+	}
+	if failedSources == totalSources {
+		return newCompletedWithFindingsError("repository sync completed: all sources failed")
+	}
+
+	return newCompletedWithFindingsError("repository sync completed with source failures")
+}
+
 // detectRemovedForSource compares a source's pre-sync resource inventory with the
 // current source contents to identify resources that were removed from the source.
 func detectRemovedForSource(src *repomanifest.Source, sourcePath, repoPath string,
@@ -1026,240 +1293,55 @@ func runSync(cmd *cobra.Command, args []string) error {
 }
 
 func runSyncWithManager(cmd *cobra.Command, manager *repo.Manager, lockAlreadyHeld bool, overrideDryRun bool) error {
-	effectiveDryRun := syncDryRunFlag
-	if overrideDryRun {
-		effectiveDryRun = true
-	}
-
-	originalSyncDryRun := syncDryRunFlag
-	syncDryRunFlag = effectiveDryRun
-	defer func() {
-		syncDryRunFlag = originalSyncDryRun
-	}()
+	restoreDryRun := applySyncDryRunOverride(overrideDryRun)
+	defer restoreDryRun()
 
 	if err := ensureRepoInitialized(manager); err != nil {
 		return newOperationalFailureError(err)
 	}
 
-	if !lockAlreadyHeld {
-		repoLock, err := manager.AcquireRepoWriteLock(cmd.Context())
-		if err != nil {
-			return wrapLockAcquireError(manager.RepoLockPath(), err)
-		}
+	repoLock, err := acquireSyncRunLock(cmd, manager, lockAlreadyHeld)
+	if err != nil {
+		return err
+	}
+	if repoLock != nil {
 		defer func() {
 			_ = repoLock.Unlock()
 		}()
-
-		if err := maybeHoldAfterRepoLock(cmd.Context(), "sync"); err != nil {
-			return err
-		}
 	}
 
-	// Load manifest from ai.repo.yaml
-	manifest, err := repomanifest.LoadForMutation(manager.GetRepoPath())
+	state, err := prepareSyncRunState(manager)
 	if err != nil {
-		return newOperationalFailureError(fmt.Errorf("failed to load manifest: %w", err))
+		return err
 	}
+	printSyncStart(state)
 
-	if err := detectSyncResourceCollisions(manifest, manager); err != nil {
-		return newOperationalFailureError(err)
-	}
+	restoreFlags := applySyncOperationFlags()
+	defer restoreFlags()
 
-	// Check if any sources configured
-	if len(manifest.Sources) == 0 {
-		return newOperationalFailureError(fmt.Errorf("no sync sources configured\n\nAdd sources using:\n  aimgr repo add <source>\n\nSources are automatically tracked in ai.repo.yaml"))
-	}
+	sourceResults, internalResult, sourceWarnings := syncManifestSources(state, manager)
+	state.warnings = append(state.warnings, sourceWarnings...)
 
-	// Load source metadata for timestamps
-	metadata, err := sourcemetadata.Load(manager.GetRepoPath())
-	if err != nil {
-		// If metadata doesn't exist yet, create empty one
-		metadata = &sourcemetadata.SourceMetadata{
-			Version: 1,
-			Sources: make(map[string]*sourcemetadata.SourceState),
-		}
-	}
-
-	// Determine output format
-	format, formatErr := output.ParseFormat(syncFormatFlag)
-	if formatErr != nil {
-		return newOperationalFailureError(formatErr)
-	}
-	mode := syncOutputMode{format: format, verbose: syncVerboseFlag}
-	if mode.human() {
-		fmt.Printf("Syncing from %d configured source(s)...\n", len(manifest.Sources))
-		if syncDryRunFlag {
-			fmt.Println("Mode: DRY RUN (preview only)")
-		}
-		if syncPruneFlag {
-			fmt.Println("Prune mode: enabled (--prune)")
-		}
-		fmt.Println()
-	}
-	sourceDisplayNames := buildSourceDisplayNames(manifest.Sources)
-
-	// Set flags for the duration of the sync operation
-	originalForceFlag := forceFlag
-	originalDryRunFlag := dryRunFlag
-	originalSkipExistingFlag := skipExistingFlag
-	originalAddFormatFlag := addFormatFlag
-	originalSyncSilentMode := syncSilentMode
-
-	// Default to force=true unless --skip-existing specified
-	forceFlag = !syncSkipExistingFlag
-	skipExistingFlag = syncSkipExistingFlag
-	dryRunFlag = syncDryRunFlag
-	addFormatFlag = syncFormatFlag
-	// Enable silent mode: suppress inline output from importFromLocalPathWithMode
-	syncSilentMode = true
-
-	// Restore original flags when done
-	defer func() {
-		forceFlag = originalForceFlag
-		dryRunFlag = originalDryRunFlag
-		skipExistingFlag = originalSkipExistingFlag
-		addFormatFlag = originalAddFormatFlag
-		syncSilentMode = originalSyncSilentMode
-	}()
-
-	// Collect pre-sync inventory for orphan detection (bmz1.1)
-	repoPath := manager.GetRepoPath()
-	var warnings []string
-	preSyncResources, err := collectResourcesBySource(repoPath)
-	if err != nil {
-		warnings = append(warnings, fmt.Sprintf("could not collect pre-sync inventory: %v", err))
-		preSyncResources = make(map[string][]resourceInfo)
-	}
-	remapLegacyRemoteSourceIDs(preSyncResources, manifest)
-
-	internalResult := syncResult{
-		failedSources:    make([]string, 0),
-		removedResources: make(map[string][]resourceInfo),
-	}
-
-	// Collect per-source results
-	var sourceResults []sourceSyncResult
-
-	// Process each source
-	for _, src := range manifest.Sources {
-		sr := sourceSyncResult{
-			Name: src.Name,
-		}
-		if src.URL != "" {
-			sr.URL = src.URL
-			sr.Mode = "remote"
-		} else {
-			sr.Path = src.Path
-			sr.Mode = "local"
-		}
-
-		if mode.human() {
-			fmt.Printf("  Syncing %s (%s)...\n", sr.Name, sr.Mode)
-		}
-
-		// Sync this source (returns resolved source path for scanning)
-		sourcePath, bulkResult, syncErr := syncSource(src, manager)
-		sr.Result = bulkResult
-
-		if syncErr != nil {
-			sr.Failed = true
-			sr.Error = syncErr.Error()
-			internalResult.sourcesFailed++
-			internalResult.failedSources = append(internalResult.failedSources, src.Name)
-			sourceResults = append(sourceResults, sr)
-			continue
-		}
-
-		// Detect removed resources (bmz1.2)
-		sourceKey := canonicalSourceID(src)
-		if sourceKey == "" {
-			sourceKey = src.Name
-		}
-		if syncPruneFlag {
-			removed, detectWarnings := detectRemovedForSource(src, sourcePath, repoPath, preSyncResources)
-			if len(removed) > 0 {
-				internalResult.removedResources[sourceKey] = removed
-				sr.RemovedCount = len(removed)
-			}
-			warnings = append(warnings, detectWarnings...)
-		}
-
-		// Update last_synced timestamp in metadata after successful sync
-		if !syncDryRunFlag {
-			canonicalID := canonicalSourceID(src)
-			if state, ok := metadata.Sources[src.Name]; ok {
-				state.LastSynced = time.Now()
-				if canonicalID != "" {
-					state.SourceID = canonicalID
-				}
-			} else {
-				metadata.Sources[src.Name] = &sourcemetadata.SourceState{
-					SourceID:   canonicalID,
-					Added:      time.Now(),
-					LastSynced: time.Now(),
-				}
-			}
-		}
-
-		internalResult.sourcesProcessed++
-		sourceResults = append(sourceResults, sr)
-	}
-
-	// Save updated metadata with new timestamps
 	if !syncDryRunFlag && internalResult.sourcesProcessed > 0 {
-		warnings = append(warnings, syncSaveMetadata(manager, metadata)...)
+		state.warnings = append(state.warnings, syncSaveMetadata(manager, state.metadata)...)
 	}
 
-	// Remove orphaned resources (bmz1.3)
 	var removed []removedResource
 	if syncPruneFlag {
 		var removalWarnings []string
-		removed, removalWarnings = removeOrphanedResources(manager, internalResult.removedResources, sourceDisplayNames, mode)
-		warnings = append(warnings, removalWarnings...)
+		removed, removalWarnings = removeOrphanedResources(manager, internalResult.removedResources, state.sourceDisplayNames, state.mode)
+		state.warnings = append(state.warnings, removalWarnings...)
 	}
 
-	// Build the complete sync output struct
-	summary := syncSummary{
-		SourcesTotal:  len(manifest.Sources),
-		SourcesSynced: internalResult.sourcesProcessed,
-		SourcesFailed: internalResult.sourcesFailed,
-	}
-	for _, sr := range sourceResults {
-		if sr.Result != nil {
-			summary.ResourcesAdded += len(sr.Result.Added)
-			summary.ResourcesUpdated += len(sr.Result.Updated)
-			summary.ResourcesFailed += len(sr.Result.Failed)
-		}
-	}
-	summary.ResourcesRemoved = len(removed)
-
-	so := &syncOutput{
-		Sources:  sourceResults,
-		Removed:  removed,
-		Summary:  summary,
-		Warnings: warnings,
-	}
-	if so.Removed == nil {
-		so.Removed = []removedResource{}
-	}
-
-	// Format and print output
-	if err := renderSyncOutput(so, format, syncVerboseFlag); err != nil {
+	so := buildSyncOutput(sourceResults, removed, state.warnings, len(state.manifest.Sources))
+	if err := renderSyncOutput(so, state.format, syncVerboseFlag); err != nil {
 		return newOperationalFailureError(err)
 	}
 
 	// Regenerate modifications (skip in dry-run mode)
 	if !syncDryRunFlag {
-		syncRegenerateModifications(manager, repoPath)
+		syncRegenerateModifications(manager, state.repoPath)
 	}
 
-	if internalResult.sourcesFailed == 0 {
-		return nil
-	}
-
-	if internalResult.sourcesFailed == len(manifest.Sources) {
-		return newCompletedWithFindingsError("repository sync completed: all sources failed")
-	}
-
-	return newCompletedWithFindingsError("repository sync completed with source failures")
+	return syncCompletionError(internalResult.sourcesFailed, len(state.manifest.Sources))
 }

@@ -130,7 +130,7 @@ func TestRunRebuild_ReportsPerSourceProgressDuringReimport(t *testing.T) {
 		t.Fatalf("expected rebuild output to include sync completion summary, got: %q", stdout)
 	}
 
-	if !(reimportIdx < progressIdx && progressIdx < completeIdx) {
+	if reimportIdx >= progressIdx || progressIdx >= completeIdx {
 		t.Fatalf("expected per-source progress between re-import banner and sync summary; indices reimport=%d progress=%d complete=%d; output=%q", reimportIdx, progressIdx, completeIdx, stdout)
 	}
 }
