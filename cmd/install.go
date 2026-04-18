@@ -658,6 +658,11 @@ func syncManifestSourceForInstall(manager *repo.Manager, src *repomanifest.Sourc
 	if err != nil {
 		return fmt.Errorf("failed to discover resources for source '%s': %w", src.Name, err)
 	}
+	if len(discovered.discoveryErrors) > 0 {
+		fmt.Println()
+		printDiscoveryErrorsForSource(src.Name, discovered.discoveryErrors)
+		fmt.Println()
+	}
 
 	commands, skills, agents, packages, err := applyFilter(src.Include, discovered.commands, discovered.skills, discovered.agents, discovered.packages)
 	if err != nil {

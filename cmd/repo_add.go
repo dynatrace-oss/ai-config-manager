@@ -473,6 +473,14 @@ type discoveredImportResources struct {
 	marketplacePackages []*marketplace.PackageInfo
 }
 
+type renderedDiscoveryIssue struct {
+	Path        string   `json:"path" yaml:"path"`
+	DisplayPath string   `json:"display_path" yaml:"display_path"`
+	Label       string   `json:"label" yaml:"label"`
+	Message     string   `json:"message" yaml:"message"`
+	Suggestions []string `json:"suggestions,omitempty" yaml:"suggestions,omitempty"`
+}
+
 func ensureNormalizedMarketplacePathExists(localPath string) error {
 	cleanPath := filepath.Clean(localPath)
 	if filepath.Base(cleanPath) != "marketplace.json" {
@@ -657,6 +665,25 @@ func importFromLocalPathWithMode(
 	discovered, err := discoverImportResourcesByMode(localPath, discoveryMode)
 	if err != nil {
 		return nil, err
+	}
+
+	return importDiscoveredResources(localPath, manager, filter, sourceURL, sourceType, ref, importMode, sourceName, sourceID, discovered)
+}
+
+func importDiscoveredResources(
+	localPath string,
+	manager *repo.Manager,
+	filter []string,
+	sourceURL string,
+	sourceType string,
+	ref string,
+	importMode string,
+	sourceName string,
+	sourceID string,
+	discovered *discoveredImportResources,
+) (*output.BulkOperationResult, error) {
+	if discovered == nil {
+		return nil, fmt.Errorf("no discovered resources provided")
 	}
 
 	commands := discovered.commands
@@ -1469,8 +1496,38 @@ func printImportResults(result *repo.BulkImportResult) {
 
 // printDiscoveryErrors prints discovery errors with helpful suggestions
 func printDiscoveryErrors(errors []discovery.DiscoveryError) {
+	printRenderedDiscoveryIssues("Discovery Issues", renderDiscoveryIssues(errors))
+}
+
+func printDiscoveryErrorsForSource(sourceName string, errors []discovery.DiscoveryError) {
+	printRenderedDiscoveryIssues(fmt.Sprintf("Discovery Issues for source '%s'", sourceName), renderDiscoveryIssues(errors))
+}
+
+func renderDiscoveryIssues(errors []discovery.DiscoveryError) []renderedDiscoveryIssue {
 	if len(errors) == 0 {
-		return
+		return nil
+	}
+
+	uniqueErrors := deduplicateDiscoveryErrors(errors)
+	issues := make([]renderedDiscoveryIssue, 0, len(uniqueErrors))
+	for _, err := range uniqueErrors {
+		label, message, suggestions := formatDiscoveryErrorDisplay(err.Error)
+		issues = append(issues, renderedDiscoveryIssue{
+			Path:        err.Path,
+			DisplayPath: formatDiscoveryErrorPath(err.Path),
+			Label:       label,
+			Message:     message,
+			Suggestions: suggestions,
+		})
+	}
+
+	return issues
+
+}
+
+func deduplicateDiscoveryErrors(errors []discovery.DiscoveryError) []discovery.DiscoveryError {
+	if len(errors) == 0 {
+		return nil
 	}
 
 	// Deduplicate errors by path (first error for each path wins)
@@ -1483,21 +1540,30 @@ func printDiscoveryErrors(errors []discovery.DiscoveryError) {
 		}
 	}
 
-	fmt.Printf("⚠ Discovery Issues (%d):\n", len(uniqueErrors))
+	return uniqueErrors
+}
+
+func formatDiscoveryErrorPath(path string) string {
+	shortPath := filepath.Base(path)
+	if filepath.Base(filepath.Dir(path)) != "." {
+		shortPath = filepath.Join(filepath.Base(filepath.Dir(path)), filepath.Base(path))
+	}
+
+	return shortPath
+}
+
+func printRenderedDiscoveryIssues(title string, issues []renderedDiscoveryIssue) {
+	if len(issues) == 0 {
+		return
+	}
+
+	fmt.Printf("⚠ %s (%d):\n", title, len(issues))
 	fmt.Println()
 
-	for _, err := range uniqueErrors {
-		// Extract just the directory/file name for display
-		shortPath := filepath.Base(err.Path)
-		if filepath.Base(filepath.Dir(err.Path)) != "." {
-			// Include parent directory for context
-			shortPath = filepath.Join(filepath.Base(filepath.Dir(err.Path)), filepath.Base(err.Path))
-		}
-
-		fmt.Printf("  ✗ %s\n", shortPath)
-		label, message, suggestions := formatDiscoveryErrorDisplay(err.Error)
-		fmt.Printf("    %s: %s\n", label, message)
-		for _, suggestion := range suggestions {
+	for _, issue := range issues {
+		fmt.Printf("  ✗ %s\n", issue.DisplayPath)
+		fmt.Printf("    %s: %s\n", issue.Label, issue.Message)
+		for _, suggestion := range issue.Suggestions {
 			fmt.Printf("    → %s\n", suggestion)
 		}
 		fmt.Println()

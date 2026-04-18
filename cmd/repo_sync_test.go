@@ -249,6 +249,30 @@ func createSourceWithInvalidMarketplace(t *testing.T) string {
 	return sourceDir
 }
 
+func createSourceWithMalformedAgentAndValidCommand(t *testing.T) string {
+	t.Helper()
+
+	sourceDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(sourceDir, "agents"), 0755); err != nil {
+		t.Fatalf("failed to create agents dir: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(sourceDir, "commands"), 0755); err != nil {
+		t.Fatalf("failed to create commands dir: %v", err)
+	}
+
+	badAgent := "---\ndescription: malformed agent\npermissions:\n  bash: \"*\": ask\n---\n# malformed\n"
+	if err := os.WriteFile(filepath.Join(sourceDir, "agents", "broken-agent.md"), []byte(badAgent), 0644); err != nil {
+		t.Fatalf("failed to write malformed agent: %v", err)
+	}
+
+	goodCommand := "---\ndescription: valid command\n---\n# valid-command\n"
+	if err := os.WriteFile(filepath.Join(sourceDir, "commands", "valid-command.md"), []byte(goodCommand), 0644); err != nil {
+		t.Fatalf("failed to write valid command: %v", err)
+	}
+
+	return sourceDir
+}
+
 func createSourceWithMarketplaceAndLooseResources(t *testing.T) string {
 	t.Helper()
 
@@ -1547,7 +1571,7 @@ func TestSyncSource_ReturnsSourcePath(t *testing.T) {
 	}
 
 	// syncSource should return the source path
-	returnedPath, _, err := syncSource(sources[0], manager)
+	returnedPath, _, _, err := syncSource(sources[0], manager)
 	if err != nil {
 		t.Fatalf("syncSource failed: %v", err)
 	}
@@ -1572,7 +1596,7 @@ func TestSyncSource_RespectsDiscoveryMode(t *testing.T) {
 		defer cleanup()
 
 		manager := repo.NewManagerWithPath(repoPath)
-		_, _, err := syncSource(sources[0], manager)
+		_, _, _, err := syncSource(sources[0], manager)
 		if err != nil {
 			t.Fatalf("syncSource should ignore broken marketplace when discovery=generic: %v", err)
 		}
@@ -1592,7 +1616,7 @@ func TestSyncSource_RespectsDiscoveryMode(t *testing.T) {
 		defer cleanup()
 
 		manager := repo.NewManagerWithPath(repoPath)
-		_, _, err := syncSource(sources[0], manager)
+		_, _, _, err := syncSource(sources[0], manager)
 		if err == nil {
 			t.Fatal("expected marketplace discovery parsing error, got nil")
 		}
@@ -1615,7 +1639,7 @@ func TestSyncSource_DiscoveryMode_SelectsMarketplaceVsGenericResources(t *testin
 		defer cleanup()
 
 		manager := repo.NewManagerWithPath(repoPath)
-		_, _, err := syncSource(sources[0], manager)
+		_, _, _, err := syncSource(sources[0], manager)
 		if err != nil {
 			t.Fatalf("syncSource failed: %v", err)
 		}
@@ -1640,7 +1664,7 @@ func TestSyncSource_DiscoveryMode_SelectsMarketplaceVsGenericResources(t *testin
 		defer cleanup()
 
 		manager := repo.NewManagerWithPath(repoPath)
-		_, _, err := syncSource(sources[0], manager)
+		_, _, _, err := syncSource(sources[0], manager)
 		if err != nil {
 			t.Fatalf("syncSource failed: %v", err)
 		}
@@ -1660,7 +1684,7 @@ func TestSyncSource_DiscoveryMode_SelectsMarketplaceVsGenericResources(t *testin
 		defer cleanup()
 
 		manager := repo.NewManagerWithPath(repoPath)
-		_, _, err := syncSource(sources[0], manager)
+		_, _, _, err := syncSource(sources[0], manager)
 		if err != nil {
 			t.Fatalf("syncSource failed: %v", err)
 		}
@@ -1683,7 +1707,7 @@ func TestSyncSource_DiscoveryMode_ZeroResolvableMarketplaceErrors(t *testing.T) 
 		defer cleanup()
 
 		manager := repo.NewManagerWithPath(repoPath)
-		_, _, err := syncSource(sources[0], manager)
+		_, _, _, err := syncSource(sources[0], manager)
 		if err == nil {
 			t.Fatal("expected zero-resolvable marketplace error")
 		}
@@ -1702,7 +1726,7 @@ func TestSyncSource_DiscoveryMode_ZeroResolvableMarketplaceErrors(t *testing.T) 
 		defer cleanup()
 
 		manager := repo.NewManagerWithPath(repoPath)
-		_, _, err := syncSource(sources[0], manager)
+		_, _, _, err := syncSource(sources[0], manager)
 		if err == nil {
 			t.Fatal("expected zero-resolvable marketplace error")
 		}
@@ -1737,7 +1761,7 @@ func TestSyncSource_DirectPluginDirectoryMarketplaceFileInputs(t *testing.T) {
 				defer cleanup()
 
 				manager := repo.NewManagerWithPath(repoPath)
-				_, _, err := syncSource(sources[0], manager)
+				_, _, _, err := syncSource(sources[0], manager)
 				if err != nil {
 					t.Fatalf("syncSource failed for %s: %v", sourcePath, err)
 				}
@@ -1783,7 +1807,7 @@ func TestSyncSource_DirectPluginDirectoryMarketplaceFileInputs(t *testing.T) {
 				runGit(t, cacheRepoPath, "checkout", "main")
 
 				manager := repo.NewManagerWithPath(repoPath)
-				_, _, err := syncSource(sources[0], manager)
+				_, _, _, err := syncSource(sources[0], manager)
 				if err != nil {
 					t.Fatalf("syncSource failed for remote subpath %q: %v", tt.subpath, err)
 				}
@@ -2499,6 +2523,74 @@ func TestRunSync_JSONOutputIsSingleDocument(t *testing.T) {
 	}
 	if len(got.Sources) != 1 {
 		t.Fatalf("expected one source result, got %d", len(got.Sources))
+	}
+}
+
+func TestRunSync_TableOutputPrintsDiscoveryIssuesForMalformedResources(t *testing.T) {
+	sourceDir := createSourceWithMalformedAgentAndValidCommand(t)
+	repoPath, cleanup := setupTestManifest(t, []*repomanifest.Source{{Name: "broken-source", Path: sourceDir}})
+	defer cleanup()
+
+	output := captureOutput(t, func() {
+		if err := runSync(syncCmd, []string{}); err != nil {
+			t.Fatalf("runSync failed: %v", err)
+		}
+	})
+
+	if !strings.Contains(output.Stdout, "Discovery Issues for source 'broken-source' (1)") {
+		t.Fatalf("expected discovery issue header in sync output, got:\n%s", output.Stdout)
+	}
+	if !strings.Contains(output.Stdout, "agents/broken-agent.md") {
+		t.Fatalf("expected malformed agent path in sync output, got:\n%s", output.Stdout)
+	}
+	if !strings.Contains(output.Stdout, "Some files were skipped during discovery") {
+		t.Fatalf("expected discovery tip in sync output, got:\n%s", output.Stdout)
+	}
+	if output.Stderr != "" {
+		t.Fatalf("expected no stderr output, got:\n%s", output.Stderr)
+	}
+
+	verifyResourcesInRepo(t, repoPath, resource.Command, "valid-command")
+	verifyResourcesNotInRepo(t, repoPath, resource.Agent, "broken-agent")
+}
+
+func TestRunSync_JSONOutputIncludesDiscoveryIssues(t *testing.T) {
+	sourceDir := createSourceWithMalformedAgentAndValidCommand(t)
+	_, cleanup := setupTestManifest(t, []*repomanifest.Source{{Name: "broken-source", Path: sourceDir}})
+	defer cleanup()
+
+	oldFormat := syncFormatFlag
+	oldVerbose := syncVerboseFlag
+	syncFormatFlag = "json"
+	syncVerboseFlag = false
+	defer func() {
+		syncFormatFlag = oldFormat
+		syncVerboseFlag = oldVerbose
+	}()
+
+	var runErr error
+	output := captureOutput(t, func() {
+		runErr = runSync(syncCmd, []string{})
+	})
+	if runErr != nil {
+		t.Fatalf("runSync failed: %v", runErr)
+	}
+
+	var got syncOutput
+	if err := json.Unmarshal([]byte(output.Stdout), &got); err != nil {
+		t.Fatalf("expected valid JSON output, got error: %v\noutput:\n%s", err, output.Stdout)
+	}
+	if len(got.Sources) != 1 {
+		t.Fatalf("expected one source result, got %d", len(got.Sources))
+	}
+	if len(got.Sources[0].DiscoveryIssues) != 1 {
+		t.Fatalf("expected one discovery issue, got %+v", got.Sources[0].DiscoveryIssues)
+	}
+	if got.Sources[0].DiscoveryIssues[0].DisplayPath != "agents/broken-agent.md" {
+		t.Fatalf("unexpected discovery issue path: %+v", got.Sources[0].DiscoveryIssues[0])
+	}
+	if len(got.Warnings) == 0 {
+		t.Fatalf("expected top-level warnings in sync JSON output, got %+v", got)
 	}
 }
 

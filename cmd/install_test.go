@@ -1078,6 +1078,21 @@ func createRemoteSkillSource(t *testing.T, skillName string) string {
 	return sourceDir
 }
 
+func createRemoteSkillSourceWithMalformedAgent(t *testing.T, skillName string) string {
+	t.Helper()
+
+	sourceDir := createRemoteSkillSource(t, skillName)
+	agentsDir := filepath.Join(sourceDir, "agents")
+	if err := os.MkdirAll(agentsDir, 0755); err != nil {
+		t.Fatalf("mkdir agents dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(agentsDir, "broken-agent.md"), []byte("---\ndescription: malformed agent\npermissions:\n  bash: \"*\": ask\n---\n"), 0644); err != nil {
+		t.Fatalf("write malformed agent: %v", err)
+	}
+
+	return sourceDir
+}
+
 func withInstallBootstrapResolver(t *testing.T, resolver func(src *repomanifest.Source, manager *repo.Manager) (string, error)) {
 	t.Helper()
 	original := resolveSourcePathForInstallBootstrap
@@ -1153,6 +1168,59 @@ sources:
 		t.Fatalf("expected repo workspace to exist: %v", err)
 	}
 
+	if _, err := os.Lstat(filepath.Join(projectPath, ".claude", "skills", "bootstrap-skill")); err != nil {
+		t.Fatalf("expected installed skill symlink: %v", err)
+	}
+}
+
+func TestInstallFromManifest_BootstrapPrintsDiscoveryIssuesForMalformedResources(t *testing.T) {
+	repoPath := t.TempDir()
+	projectPath := t.TempDir()
+	sourceDir := createRemoteSkillSourceWithMalformedAgent(t, "bootstrap-skill")
+
+	withInstallBootstrapResolver(t, func(src *repomanifest.Source, manager *repo.Manager) (string, error) {
+		return sourceDir, nil
+	})
+
+	manifestBody := `resources:
+  - skill/bootstrap-skill
+install:
+  targets:
+    - claude
+sources:
+  - name: bootstrap-source
+    url: https://example.com/org/bootstrap-repo
+`
+	if err := os.WriteFile(filepath.Join(projectPath, manifest.ManifestFileName), []byte(manifestBody), 0644); err != nil {
+		t.Fatalf("write manifest: %v", err)
+	}
+
+	oldRepoEnv := os.Getenv("AIMGR_REPO_PATH")
+	oldProjectPathFlag := projectPathFlag
+	t.Cleanup(func() {
+		projectPathFlag = oldProjectPathFlag
+		if oldRepoEnv != "" {
+			_ = os.Setenv("AIMGR_REPO_PATH", oldRepoEnv)
+		} else {
+			_ = os.Unsetenv("AIMGR_REPO_PATH")
+		}
+	})
+
+	projectPathFlag = projectPath
+	_ = os.Setenv("AIMGR_REPO_PATH", repoPath)
+
+	output := captureOutput(t, func() {
+		if err := installFromManifest(); err != nil {
+			t.Fatalf("installFromManifest failed: %v", err)
+		}
+	})
+
+	if !strings.Contains(output.Stdout, "Discovery Issues for source 'bootstrap-source' (1)") {
+		t.Fatalf("expected discovery warning in install output, got:\n%s", output.Stdout)
+	}
+	if !strings.Contains(output.Stdout, "agents/broken-agent.md") {
+		t.Fatalf("expected malformed agent path in install output, got:\n%s", output.Stdout)
+	}
 	if _, err := os.Lstat(filepath.Join(projectPath, ".claude", "skills", "bootstrap-skill")); err != nil {
 		t.Fatalf("expected installed skill symlink: %v", err)
 	}

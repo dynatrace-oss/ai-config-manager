@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/config"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/discovery"
 	resmeta "github.com/dynatrace-oss/ai-config-manager/v3/pkg/metadata"
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/modifications"
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/output"
@@ -34,14 +35,16 @@ type resourceInfo struct {
 
 // sourceSyncResult holds the result for one source.
 type sourceSyncResult struct {
-	Name         string                      `json:"name"`
-	URL          string                      `json:"url,omitempty"`
-	Path         string                      `json:"path,omitempty"`
-	Mode         string                      `json:"mode"` // "remote" or "local"
-	Result       *output.BulkOperationResult `json:"result"`
-	RemovedCount int                         `json:"removed_count"`
-	Error        string                      `json:"error,omitempty"`
-	Failed       bool                        `json:"failed"`
+	Name            string                      `json:"name"`
+	URL             string                      `json:"url,omitempty"`
+	Path            string                      `json:"path,omitempty"`
+	Mode            string                      `json:"mode"` // "remote" or "local"
+	Result          *output.BulkOperationResult `json:"result"`
+	RemovedCount    int                         `json:"removed_count"`
+	Warnings        []string                    `json:"warnings,omitempty" yaml:"warnings,omitempty"`
+	DiscoveryIssues []renderedDiscoveryIssue    `json:"discovery_issues,omitempty" yaml:"discovery_issues,omitempty"`
+	Error           string                      `json:"error,omitempty"`
+	Failed          bool                        `json:"failed"`
 }
 
 // removedResource describes a resource that was removed during sync.
@@ -634,10 +637,10 @@ func prepareRemoteSourcePath(wsMgr workspaceManager, cloneURL string, ref string
 // syncSource syncs resources from a single manifest source.
 // Returns the resolved source path (for use in post-sync scanning), the bulk result, and any error.
 // When syncSilentMode is true, "Mode: Remote/Local" lines are suppressed.
-func syncSource(src *repomanifest.Source, manager *repo.Manager) (string, *output.BulkOperationResult, error) {
+func syncSource(src *repomanifest.Source, manager *repo.Manager) (string, *output.BulkOperationResult, []discovery.DiscoveryError, error) {
 	sourcePath, err := resolveSourcePathForSync(src, manager)
 	if err != nil {
-		return "", nil, err
+		return "", nil, nil, err
 	}
 
 	var mode string
@@ -655,7 +658,7 @@ func syncSource(src *repomanifest.Source, manager *repo.Manager) (string, *outpu
 		}
 		mode = src.GetMode() // Use mode from source (implicit: path=symlink, url=copy)
 	} else {
-		return "", nil, fmt.Errorf("source must have either URL or Path")
+		return "", nil, nil, fmt.Errorf("source must have either URL or Path")
 	}
 
 	// Import from source path with appropriate mode
@@ -670,11 +673,16 @@ func syncSource(src *repomanifest.Source, manager *repo.Manager) (string, *outpu
 		sourceURL = "file://" + sourcePath
 		sourceType = string(source.Local)
 	}
-	bulkResult, err := importFromLocalPathWithMode(sourcePath, manager, src.Include, sourceURL, sourceType, src.Ref, mode, src.Discovery, src.Name, src.ID)
+	discovered, err := discoverImportResourcesByMode(sourcePath, src.Discovery)
 	if err != nil {
-		return "", bulkResult, err
+		return "", nil, nil, err
 	}
-	return sourcePath, bulkResult, nil
+
+	bulkResult, err := importDiscoveredResources(sourcePath, manager, src.Include, sourceURL, sourceType, src.Ref, mode, src.Name, src.ID, discovered)
+	if err != nil {
+		return "", bulkResult, discovered.discoveryErrors, err
+	}
+	return sourcePath, bulkResult, discovered.discoveryErrors, nil
 }
 
 // syncResult tracks the outcome of processing all sources.
@@ -872,8 +880,18 @@ func syncManifestSources(state *syncRunState, manager *repo.Manager) ([]sourceSy
 			fmt.Printf("  Syncing %s (%s)...\n", sr.Name, sr.Mode)
 		}
 
-		sourcePath, bulkResult, syncErr := syncSource(src, manager)
+		sourcePath, bulkResult, discoveryErrors, syncErr := syncSource(src, manager)
 		sr.Result = bulkResult
+		if len(discoveryErrors) > 0 {
+			sr.DiscoveryIssues = renderDiscoveryIssues(discoveryErrors)
+			sr.Warnings = append(sr.Warnings, fmt.Sprintf("%d resource(s) were skipped during discovery due to validation issues", len(sr.DiscoveryIssues)))
+			warnings = append(warnings, fmt.Sprintf("source '%s': %d resource(s) were skipped during discovery due to validation issues", src.Name, len(sr.DiscoveryIssues)))
+			if state.mode.human() {
+				fmt.Println()
+				printDiscoveryErrorsForSource(src.Name, discoveryErrors)
+				fmt.Println()
+			}
+		}
 		if syncErr != nil {
 			sr.Failed = true
 			sr.Error = syncErr.Error()
