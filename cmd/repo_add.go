@@ -11,6 +11,7 @@ import (
 
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/discovery"
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/marketplace"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/metadata"
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/output"
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/pattern"
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/repo"
@@ -670,6 +671,50 @@ func importFromLocalPathWithMode(
 	return importDiscoveredResources(localPath, manager, filter, sourceURL, sourceType, ref, importMode, sourceName, sourceID, discovered)
 }
 
+func persistGeneratedMarketplacePackage(
+	manager *repo.Manager,
+	pkg *resource.Package,
+	sourceURL string,
+	sourceType string,
+	ref string,
+	sourceName string,
+	sourceID string,
+) error {
+	if manager == nil {
+		return fmt.Errorf("manager cannot be nil")
+	}
+	if pkg == nil {
+		return fmt.Errorf("package cannot be nil")
+	}
+
+	if err := resource.SavePackage(pkg, manager.GetRepoPath()); err != nil {
+		return err
+	}
+
+	resolvedSourceName := sourceName
+	if resolvedSourceName == "" {
+		resolvedSourceName = metadata.DeriveSourceName(sourceURL)
+	}
+
+	now := time.Now()
+	firstAdded := now
+	if existing, err := metadata.LoadPackageMetadata(pkg.Name, manager.GetRepoPath()); err == nil && !existing.FirstAdded.IsZero() {
+		firstAdded = existing.FirstAdded
+	}
+
+	return metadata.SavePackageMetadata(&metadata.PackageMetadata{
+		Name:          pkg.Name,
+		SourceType:    sourceType,
+		SourceURL:     sourceURL,
+		SourceName:    resolvedSourceName,
+		SourceID:      sourceID,
+		SourceRef:     ref,
+		FirstAdded:    firstAdded,
+		LastUpdated:   now,
+		ResourceCount: len(pkg.Resources),
+	}, manager.GetRepoPath())
+}
+
 func importDiscoveredResources(
 	localPath string,
 	manager *repo.Manager,
@@ -839,8 +884,7 @@ func importDiscoveredResources(
 	// Save marketplace-generated packages if not in dry-run mode
 	if !dryRunFlag {
 		for _, pkgInfo := range marketplacePackages {
-			// Save package to repository
-			if err := resource.SavePackage(pkgInfo.Package, manager.GetRepoPath()); err != nil {
+			if err := persistGeneratedMarketplacePackage(manager, pkgInfo.Package, sourceURL, sourceType, ref, sourceName, sourceID); err != nil {
 				if !syncSilentMode {
 					fmt.Printf("⚠ Warning: Failed to save package %s: %v\n", pkgInfo.Package.Name, err)
 				}

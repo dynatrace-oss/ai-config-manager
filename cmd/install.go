@@ -731,7 +731,7 @@ func syncManifestSourceForInstall(manager *repo.Manager, src *repomanifest.Sourc
 	}
 
 	for _, pkgInfo := range discovered.marketplacePackages {
-		if saveErr := resource.SavePackage(pkgInfo.Package, manager.GetRepoPath()); saveErr != nil {
+		if saveErr := persistGeneratedMarketplacePackage(manager, pkgInfo.Package, src.URL, sourceType, src.Ref, src.Name, src.ID); saveErr != nil {
 			return fmt.Errorf("failed to persist generated package %q from source '%s': %w", pkgInfo.Package.Name, src.Name, saveErr)
 		}
 	}

@@ -1024,5 +1024,22 @@ func TestImportFromLocalPathWithMode_MarketplaceImportsReferencedDotAgentFiles(t
 		if len(issues) != 0 {
 			t.Fatalf("expected no missing references in generated package, got: %#v", issues)
 		}
+
+		pkgMeta, err := metadata.LoadPackageMetadata("dt-service-onboarding", repoPath)
+		if err != nil {
+			t.Fatalf("failed to load generated package metadata: %v", err)
+		}
+		if pkgMeta.SourceName != "test-source" {
+			t.Fatalf("package metadata source_name = %q, want %q", pkgMeta.SourceName, "test-source")
+		}
+		if pkgMeta.SourceID != "src-test" {
+			t.Fatalf("package metadata source_id = %q, want %q", pkgMeta.SourceID, "src-test")
+		}
+		if pkgMeta.SourceType != string(source.Local) {
+			t.Fatalf("package metadata source_type = %q, want %q", pkgMeta.SourceType, string(source.Local))
+		}
+		if pkgMeta.SourceURL != "file://"+sourceDir {
+			t.Fatalf("package metadata source_url = %q, want %q", pkgMeta.SourceURL, "file://"+sourceDir)
+		}
 	})
 }
