@@ -49,6 +49,20 @@ archives:
 checksum:
   name_template: 'checksums.txt'
 
+brews:
+  - name: aimgr
+    ids:
+      - default
+    repository:
+      owner: dynatrace-oss
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    homepage: "https://github.com/dynatrace-oss/ai-config-manager"
+    description: "Discover, install, and manage AI resources across multiple AI coding tools"
+    license: "MIT"
+    test: |
+      system "#{bin}/aimgr", "version"
+
 snapshot:
   version_template: "{{ incpatch .Version }}-next"
 
