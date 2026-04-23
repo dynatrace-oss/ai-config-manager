@@ -88,6 +88,25 @@ description: test command
 			t.Fatalf("expected command, got %q", result.Output.ResourceType)
 		}
 	})
+
+	t.Run("ambiguous bare markdown defaults to command", func(t *testing.T) {
+		mdPath := filepath.Join(t.TempDir(), "ambiguous.md")
+		content := "---\ndescription: ambiguous markdown\n---\n# Ambiguous\n"
+		if err := os.WriteFile(mdPath, []byte(content), 0644); err != nil {
+			t.Fatalf("write markdown: %v", err)
+		}
+
+		result := runResourceValidate(mdPath, resourceValidateOptions{format: "table"})
+		if result.ExitCode != 0 {
+			t.Fatalf("expected exit code 0, got %d", result.ExitCode)
+		}
+		if !result.Output.Valid {
+			t.Fatalf("expected valid result")
+		}
+		if result.Output.ResourceType != "command" {
+			t.Fatalf("expected command, got %q", result.Output.ResourceType)
+		}
+	})
 }
 
 func TestRunResourceValidate_CanonicalIDWithSourceRoot(t *testing.T) {

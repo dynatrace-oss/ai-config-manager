@@ -7,6 +7,38 @@ import (
 	"strings"
 )
 
+// InferTypeFromPath infers a resource type from path segments and well-known suffixes.
+//
+// It is intentionally conservative: it only returns ok=true when a type can be
+// inferred from explicit path conventions (commands/, skills/, agents/, packages/)
+// or package filename suffixes.
+func InferTypeFromPath(path string) (ResourceType, bool) {
+	if strings.TrimSpace(path) == "" {
+		return "", false
+	}
+
+	normalizedPath := strings.ReplaceAll(path, "\\", "/")
+	normalizedPath = filepath.ToSlash(filepath.Clean(normalizedPath))
+	for _, segment := range strings.Split(normalizedPath, "/") {
+		switch segment {
+		case "commands":
+			return Command, true
+		case "skills":
+			return Skill, true
+		case "agents":
+			return Agent, true
+		case "packages":
+			return PackageType, true
+		}
+	}
+
+	if strings.HasSuffix(normalizedPath, ".package.json") {
+		return PackageType, true
+	}
+
+	return "", false
+}
+
 // Load loads a resource from the filesystem
 // It detects whether the path is a command, agent, or skill
 func Load(path string) (*Resource, error) {
@@ -55,17 +87,13 @@ func DetectType(path string) (ResourceType, error) {
 	// Check if it's a .md file
 	if filepath.Ext(path) == ".md" {
 		// Use path-based detection first (more reliable for bulk imports)
-		// Check if file is in agents/ or commands/ directory
-		cleanPath := filepath.ToSlash(filepath.Clean(path))
-
-		// Check if path contains /agents/ anywhere (handles nested agents)
-		if strings.Contains(cleanPath, "/agents/") || strings.HasPrefix(cleanPath, "agents/") {
-			return Agent, nil
-		}
-
-		// Check if path contains /commands/ anywhere (handles nested commands)
-		if strings.Contains(cleanPath, "/commands/") || strings.HasPrefix(cleanPath, "commands/") {
-			return Command, nil
+		if inferredType, ok := InferTypeFromPath(path); ok {
+			switch inferredType {
+			case Agent:
+				return Agent, nil
+			case Command:
+				return Command, nil
+			}
 		}
 
 		// Parse frontmatter to distinguish between agent and command

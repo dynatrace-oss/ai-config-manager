@@ -127,29 +127,6 @@ func (m *Manager) GetRepoPath() string {
 // - Top-level CLI command handlers should hold the outer repo lock and call
 //   internal helpers (including Init) inside that critical section.
 
-// AcquireRepoLock acquires the repository-wide cross-process lock with default
-// CLI semantics: blocking up to 30s and honoring context cancellation.
-//
-// Deprecated: use AcquireRepoWriteLock for explicit mode selection.
-func (m *Manager) AcquireRepoLock(ctx context.Context) (*repolock.Lock, error) {
-	return m.AcquireRepoWriteLock(ctx)
-}
-
-// AcquireRepoLockWithTimeout acquires the repository-wide lock with a caller
-// provided timeout.
-//
-// Deprecated: use AcquireRepoWriteLockWithTimeout for explicit mode selection.
-func (m *Manager) AcquireRepoLockWithTimeout(ctx context.Context, timeout time.Duration) (*repolock.Lock, error) {
-	return m.AcquireRepoWriteLockWithTimeout(ctx, timeout)
-}
-
-// TryAcquireRepoLock attempts to acquire the repository-wide lock without waiting.
-//
-// Deprecated: use TryAcquireRepoWriteLock for explicit mode selection.
-func (m *Manager) TryAcquireRepoLock() (*repolock.Lock, bool, error) {
-	return m.TryAcquireRepoWriteLock()
-}
-
 // AcquireRepoReadLock acquires the repository-wide shared/read lock with default
 // CLI semantics: blocking up to 30s and honoring context cancellation.
 func (m *Manager) AcquireRepoReadLock(ctx context.Context) (*repolock.Lock, error) {

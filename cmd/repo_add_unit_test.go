@@ -222,6 +222,8 @@ func TestRepoAdd_AmbiguousInlineGitHubRefSubpathRejectedBeforeRepoWork(t *testin
 		if !strings.Contains(errMsg, "--ref <ref> --subpath <path>") {
 			t.Fatalf("expected explicit --ref/--subpath guidance, got: %v", err)
 		}
+
+		assertGoldenText(t, "repo_add/ambiguous_inline_ref_subpath_error.txt", errMsg+"\n")
 	})
 }
 

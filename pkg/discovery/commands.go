@@ -298,29 +298,26 @@ func searchDirectory(dir string, basePath string) ([]*resource.Resource, []Disco
 // isCommandsDirectory checks if a directory path IS a commands directory
 // (i.e., ends with "/commands" or "/.claude/commands" or "/.opencode/commands")
 func isCommandsDirectory(path string) bool {
-	// Normalize path separators
-	normalizedPath := filepath.ToSlash(path)
+	inferredType, ok := resource.InferTypeFromPath(path)
+	if !ok {
+		return false
+	}
+	if inferredType != resource.Command {
+		return false
+	}
 
-	// Check if the path ends with a commands directory name
-	return strings.HasSuffix(normalizedPath, "/commands") ||
-		strings.HasSuffix(normalizedPath, "/.claude/commands") ||
-		strings.HasSuffix(normalizedPath, "/.opencode/commands") ||
-		normalizedPath == "commands" ||
-		strings.HasSuffix(normalizedPath, ".claude/commands") ||
-		strings.HasSuffix(normalizedPath, ".opencode/commands")
+	normalizedPath := filepath.ToSlash(filepath.Clean(path))
+	return filepath.Base(normalizedPath) == "commands"
 }
 
 // isInCommandsSubtree checks if a file path is within a commands/ directory subtree
 // Returns true if the path contains /commands/ or /.claude/commands/ or /.opencode/commands/
 func isInCommandsSubtree(path string) bool {
-	// Normalize path separators
-	normalizedPath := filepath.ToSlash(path)
-
-	// Check for commands/ directories
-	return strings.Contains(normalizedPath, "/commands/") ||
-		strings.Contains(normalizedPath, "/.claude/commands/") ||
-		strings.Contains(normalizedPath, "/.opencode/commands/") ||
-		isCommandsDirectory(path)
+	inferredType, ok := resource.InferTypeFromPath(path)
+	if !ok {
+		return false
+	}
+	return inferredType == resource.Command
 }
 
 // deduplicateCommands removes duplicate commands by name, keeping the first occurrence

@@ -6,16 +6,13 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/config"
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/discovery"
-	resmeta "github.com/dynatrace-oss/ai-config-manager/v3/pkg/metadata"
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/modifications"
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/output"
-	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/pattern"
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/repo"
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/repomanifest"
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/resource"
@@ -28,10 +25,7 @@ import (
 )
 
 // resourceInfo holds the name and type of a resource for pre-sync inventory tracking.
-type resourceInfo struct {
-	Name string
-	Type resource.ResourceType
-}
+type resourceInfo = repo.SyncResourceInfo
 
 // sourceSyncResult holds the result for one source.
 type sourceSyncResult struct {
@@ -83,12 +77,6 @@ type syncOutputMode struct {
 	verbose bool
 }
 
-type sourceResourceClaim struct {
-	canonicalSourceID string
-	sourceName        string
-	sourceLocation    string
-}
-
 func (m syncOutputMode) human() bool {
 	return m.format == output.Table
 }
@@ -130,91 +118,7 @@ func resolveSourceDisplayName(sourceKey string, displayNames map[string]string) 
 // scans the .metadata/ directories directly. Metadata files are real files that
 // persist even when the resource symlink is dangling, ensuring complete inventory.
 func collectResourcesBySource(repoPath string) (map[string][]resourceInfo, error) {
-	bySource := make(map[string][]resourceInfo)
-
-	// Resource types to scan with their metadata subdirectory names
-	types := []struct {
-		resType resource.ResourceType
-		metaDir string
-	}{
-		{resource.Command, "commands"},
-		{resource.Skill, "skills"},
-		{resource.Agent, "agents"},
-	}
-
-	for _, rt := range types {
-		metaDirPath := filepath.Join(repoPath, ".metadata", rt.metaDir)
-		entries, err := os.ReadDir(metaDirPath)
-		if err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
-			return nil, fmt.Errorf("failed to read metadata dir %s: %w", rt.metaDir, err)
-		}
-
-		for _, entry := range entries {
-			if entry.IsDir() || !strings.HasSuffix(entry.Name(), "-metadata.json") {
-				continue
-			}
-
-			// Extract fallback name from filename: <name>-metadata.json
-			fallbackName := strings.TrimSuffix(entry.Name(), "-metadata.json")
-
-			meta, err := resmeta.Load(fallbackName, rt.resType, repoPath)
-			if err != nil {
-				continue // Skip unreadable metadata
-			}
-
-			name := meta.Name
-			if name == "" {
-				name = fallbackName
-			}
-
-			key := meta.SourceID
-			if key == "" {
-				key = meta.SourceName
-			}
-			if key == "" {
-				continue // Skip resources without source info
-			}
-
-			bySource[key] = append(bySource[key], resourceInfo{Name: name, Type: rt.resType})
-		}
-	}
-
-	// Handle packages separately (different metadata structure)
-	pkgMetaDir := filepath.Join(repoPath, ".metadata", "packages")
-	pkgEntries, err := os.ReadDir(pkgMetaDir)
-	if err == nil {
-		for _, entry := range pkgEntries {
-			if entry.IsDir() || !strings.HasSuffix(entry.Name(), "-metadata.json") {
-				continue
-			}
-
-			fallbackName := strings.TrimSuffix(entry.Name(), "-metadata.json")
-			pkgMeta, err := resmeta.LoadPackageMetadata(fallbackName, repoPath)
-			if err != nil {
-				continue
-			}
-
-			name := pkgMeta.Name
-			if name == "" {
-				name = fallbackName
-			}
-
-			key := pkgMeta.SourceID
-			if key == "" {
-				key = pkgMeta.SourceName
-			}
-			if key == "" {
-				continue
-			}
-
-			bySource[key] = append(bySource[key], resourceInfo{Name: name, Type: resource.PackageType})
-		}
-	}
-
-	return bySource, nil
+	return repo.CollectResourcesBySource(repoPath)
 }
 
 var (
@@ -439,184 +343,27 @@ func parsedRemoteSourceForManifestEntry(src *repomanifest.Source) (*source.Parse
 }
 
 func applyIncludeFilterToDiscovered(sourceResources map[resource.ResourceType]map[string]bool, include []string) error {
-	if len(include) == 0 {
-		return nil
-	}
-
-	mm, err := pattern.NewMultiMatcher(include)
-	if err != nil {
-		return fmt.Errorf("invalid include patterns: %w", err)
-	}
-
-	for resType, typeSet := range sourceResources {
-		for name := range typeSet {
-			res := &resource.Resource{Type: resType, Name: name}
-			if !mm.Match(res) {
-				delete(typeSet, name)
-			}
-		}
-		if len(typeSet) == 0 {
-			delete(sourceResources, resType)
-		}
-	}
-
-	return nil
+	return repo.ApplyIncludeFilterToDiscovered(sourceResources, include)
 }
 
 func canonicalSourceID(src *repomanifest.Source) string {
-	if src == nil {
-		return ""
-	}
-
-	if src.ID != "" && src.OverrideOriginalURL == "" {
-		return src.ID
-	}
-
-	return repomanifest.GenerateSourceID(src)
+	return repo.CanonicalSourceID(src)
 }
 
 func sourceLegacyRemoteIDAlias(src *repomanifest.Source) (legacyID string, canonicalID string) {
-	if src == nil {
-		return "", ""
-	}
-
-	var remoteURL string
-	var remoteSubpath string
-	if src.OverrideOriginalURL != "" {
-		remoteURL = src.OverrideOriginalURL
-		remoteSubpath = src.OverrideOriginalSubpath
-	} else {
-		remoteURL = src.URL
-		remoteSubpath = src.Subpath
-	}
-
-	if remoteURL == "" {
-		return "", ""
-	}
-
-	canonicalID = canonicalSourceID(src)
-	if canonicalID == "" {
-		return "", ""
-	}
-
-	legacyID = repomanifest.GenerateSourceID(&repomanifest.Source{URL: remoteURL})
-	if legacyID == "" || legacyID == canonicalID {
-		return "", ""
-	}
-
-	if repomanifest.GenerateSourceID(&repomanifest.Source{URL: remoteURL, Subpath: remoteSubpath}) == legacyID {
-		// Effective canonical identity has no subpath component; no alias needed.
-		return "", ""
-	}
-
-	return legacyID, canonicalID
+	return repo.SourceLegacyRemoteIDAlias(src)
 }
 
 func remapLegacyRemoteSourceIDs(preSyncResources map[string][]resourceInfo, manifest *repomanifest.Manifest) {
-	if len(preSyncResources) == 0 || manifest == nil {
-		return
-	}
-
-	for _, src := range manifest.Sources {
-		legacyID, canonicalID := sourceLegacyRemoteIDAlias(src)
-		if legacyID == "" || canonicalID == "" {
-			continue
-		}
-
-		resources, exists := preSyncResources[legacyID]
-		if !exists || len(resources) == 0 {
-			continue
-		}
-
-		preSyncResources[canonicalID] = append(preSyncResources[canonicalID], resources...)
-		delete(preSyncResources, legacyID)
-	}
+	repo.RemapLegacyRemoteSourceIDs(preSyncResources, manifest)
 }
 
 func sourceLocationSummary(src *repomanifest.Source) string {
-	if src == nil {
-		return "unknown location"
-	}
-
-	if src.URL != "" {
-		if src.Ref != "" {
-			if src.Subpath != "" {
-				return fmt.Sprintf("url %q (ref %q, subpath %q)", src.URL, src.Ref, src.Subpath)
-			}
-			return fmt.Sprintf("url %q (ref %q)", src.URL, src.Ref)
-		}
-		if src.Subpath != "" {
-			return fmt.Sprintf("url %q (subpath %q)", src.URL, src.Subpath)
-		}
-		return fmt.Sprintf("url %q", src.URL)
-	}
-
-	if src.Path != "" {
-		return fmt.Sprintf("path %q", src.Path)
-	}
-
-	return "unknown location"
+	return repo.SourceLocationSummary(src)
 }
 
 func detectSyncResourceCollisions(manifest *repomanifest.Manifest, manager *repo.Manager) error {
-	if manifest == nil || len(manifest.Sources) == 0 {
-		return nil
-	}
-
-	claims := make(map[string]sourceResourceClaim)
-	conflicts := make([]string, 0)
-
-	for _, src := range manifest.Sources {
-		sourcePath, err := resolveSourcePathForSync(src, manager)
-		if err != nil {
-			// Keep existing partial-sync behavior for unreachable/invalid sources.
-			continue
-		}
-
-		sourceResources, err := scanSourceResources(sourcePath, src.Discovery)
-		if err != nil {
-			continue
-		}
-
-		if err := applyIncludeFilterToDiscovered(sourceResources, src.Include); err != nil {
-			return fmt.Errorf("source %q has invalid include filters for sync collision precheck: %w", src.Name, err)
-		}
-
-		currentSourceID := canonicalSourceID(src)
-		currentLocation := sourceLocationSummary(src)
-
-		for resType, typeSet := range sourceResources {
-			for name := range typeSet {
-				resourceRef := fmt.Sprintf("%s/%s", resType, name)
-				if claim, exists := claims[resourceRef]; exists {
-					if claim.canonicalSourceID != currentSourceID {
-						conflicts = append(conflicts, fmt.Sprintf(
-							"%s provided by source %q (%s) and source %q (%s)",
-							resourceRef,
-							claim.sourceName,
-							claim.sourceLocation,
-							src.Name,
-							currentLocation,
-						))
-					}
-					continue
-				}
-
-				claims[resourceRef] = sourceResourceClaim{
-					canonicalSourceID: currentSourceID,
-					sourceName:        src.Name,
-					sourceLocation:    currentLocation,
-				}
-			}
-		}
-	}
-
-	if len(conflicts) == 0 {
-		return nil
-	}
-
-	sort.Strings(conflicts)
-	return fmt.Errorf("sync rejected: conflicting resource names across different sources:\n  - %s\nResolve by renaming one resource, narrowing include filters, or removing one of the conflicting sources", strings.Join(conflicts, "\n  - "))
+	return repo.DetectSyncResourceCollisions(manifest, manager, resolveSourcePathForSync, scanSourceResources)
 }
 
 func prepareRemoteSourcePath(wsMgr workspaceManager, cloneURL string, ref string) (string, error) {
@@ -866,63 +613,64 @@ func updateSourceMetadataAfterSync(metadata *sourcemetadata.SourceMetadata, src 
 }
 
 func syncManifestSources(state *syncRunState, manager *repo.Manager) ([]sourceSyncResult, syncResult, []string) {
-	internalResult := syncResult{
-		failedSources:    make([]string, 0),
-		removedResources: make(map[string][]resourceInfo),
-	}
-
-	sourceResults := make([]sourceSyncResult, 0, len(state.manifest.Sources))
-	var warnings []string
-
-	for _, src := range state.manifest.Sources {
-		sr := buildSourceSyncResult(src)
-		if state.mode.human() {
-			fmt.Printf("  Syncing %s (%s)...\n", sr.Name, sr.Mode)
-		}
-
-		sourcePath, bulkResult, discoveryErrors, syncErr := syncSource(src, manager)
-		sr.Result = bulkResult
-		if len(discoveryErrors) > 0 {
-			sr.DiscoveryIssues = renderDiscoveryIssues(discoveryErrors)
-			sr.Warnings = append(sr.Warnings, fmt.Sprintf("%d resource(s) were skipped during discovery due to validation issues", len(sr.DiscoveryIssues)))
-			warnings = append(warnings, fmt.Sprintf("source '%s': %d resource(s) were skipped during discovery due to validation issues", src.Name, len(sr.DiscoveryIssues)))
+	orchestration := repo.RunSyncOrchestrator(repo.SyncOrchestratorDeps{
+		Manager:          manager,
+		Manifest:         state.manifest,
+		RepoPath:         state.repoPath,
+		PreSyncResources: state.preSyncResources,
+		DryRun:           syncDryRunFlag,
+		Prune:            syncPruneFlag,
+		SyncSource: func(src *repomanifest.Source, manager *repo.Manager) (string, any, []discovery.DiscoveryError, error) {
+			return syncSource(src, manager)
+		},
+		SourceScanner: scanSourceResources,
+		Logger:        slog.Default(),
+		OnSourceStart: func(src *repomanifest.Source) {
+			if state.mode.human() {
+				sr := buildSourceSyncResult(src)
+				fmt.Printf("  Syncing %s (%s)...\n", sr.Name, sr.Mode)
+			}
+		},
+		OnDiscoveryError: func(sourceName string, discoveryErrors []discovery.DiscoveryError) {
 			if state.mode.human() {
 				fmt.Println()
-				printDiscoveryErrorsForSource(src.Name, discoveryErrors)
+				printDiscoveryErrorsForSource(sourceName, discoveryErrors)
 				fmt.Println()
 			}
-		}
-		if syncErr != nil {
-			sr.Failed = true
-			sr.Error = syncErr.Error()
-			internalResult.sourcesFailed++
-			internalResult.failedSources = append(internalResult.failedSources, src.Name)
-			sourceResults = append(sourceResults, sr)
-			continue
-		}
-
-		sourceKey := canonicalSourceID(src)
-		if sourceKey == "" {
-			sourceKey = src.Name
-		}
-		if syncPruneFlag {
-			removed, detectWarnings := detectRemovedForSource(src, sourcePath, state.repoPath, state.preSyncResources)
-			if len(removed) > 0 {
-				internalResult.removedResources[sourceKey] = removed
-				sr.RemovedCount = len(removed)
-			}
-			warnings = append(warnings, detectWarnings...)
-		}
-
-		if !syncDryRunFlag {
+		},
+		UpdateMetadata: func(src *repomanifest.Source) {
 			updateSourceMetadataAfterSync(state.metadata, src)
-		}
+		},
+	})
 
-		internalResult.sourcesProcessed++
+	internalResult := syncResult{
+		sourcesProcessed: orchestration.SourcesProcessed,
+		sourcesFailed:    orchestration.SourcesFailed,
+		failedSources:    orchestration.FailedSources,
+		removedResources: orchestration.RemovedResources,
+	}
+
+	sourceResults := make([]sourceSyncResult, 0, len(orchestration.SourceResults))
+	for _, run := range orchestration.SourceResults {
+		sr := buildSourceSyncResult(run.Source)
+		if run.Result != nil {
+			if bulk, ok := run.Result.(*output.BulkOperationResult); ok {
+				sr.Result = bulk
+			}
+		}
+		sr.RemovedCount = run.RemovedCount
+		if len(run.DiscoveryErrors) > 0 {
+			sr.DiscoveryIssues = renderDiscoveryIssues(run.DiscoveryErrors)
+			sr.Warnings = append(sr.Warnings, fmt.Sprintf("%d resource(s) were skipped during discovery due to validation issues", len(sr.DiscoveryIssues)))
+		}
+		if run.Failed && run.Error != nil {
+			sr.Failed = true
+			sr.Error = run.Error.Error()
+		}
 		sourceResults = append(sourceResults, sr)
 	}
 
-	return sourceResults, internalResult, warnings
+	return sourceResults, internalResult, orchestration.Warnings
 }
 
 func buildSyncOutput(sourceResults []sourceSyncResult, removed []removedResource, warnings []string, sourcesTotal int) *syncOutput {
@@ -974,127 +722,15 @@ func syncCompletionError(failedSources, totalSources int) error {
 // current source contents to identify resources that were removed from the source.
 func detectRemovedForSource(src *repomanifest.Source, sourcePath, repoPath string,
 	preSyncResources map[string][]resourceInfo) ([]resourceInfo, []string) {
-
-	sourceKey := canonicalSourceID(src)
-	if sourceKey == "" {
-		sourceKey = src.Name
-	}
-
-	preSyncSet := preSyncResourcesForSource(preSyncResources, sourceKey, src.Name)
-	if len(preSyncSet) == 0 {
-		return nil, nil
-	}
-
-	sourceResources, scanErr := scanSourceResources(sourcePath, src.Discovery)
-	if scanErr != nil {
-		return nil, []string{fmt.Sprintf("could not scan source %s for removal detection: %v", src.Name, scanErr)}
-	}
-
-	// Apply include filter to source resources: if include patterns are set, only
-	// resources matching the patterns are considered "present in source". Resources
-	// that exist in the source but are excluded by include are treated as absent —
-	// this ensures that removing an entry from include and re-syncing removes the
-	// previously imported resource (orphan detection for filter changes).
-	if len(src.Include) > 0 {
-		mm, err := pattern.NewMultiMatcher(src.Include)
-		if err != nil {
-			slog.Warn("invalid include patterns in source, skipping include filter for orphan detection",
-				"source", src.Name, "error", err)
-		}
-		if err == nil {
-			for resType, typeSet := range sourceResources {
-				for name := range typeSet {
-					res := &resource.Resource{Type: resType, Name: name}
-					if !mm.Match(res) {
-						delete(typeSet, name)
-					}
-				}
-				// Remove empty type sets to keep the map clean
-				if len(typeSet) == 0 {
-					delete(sourceResources, resType)
-				}
-			}
-		}
-	}
-
-	var removed []resourceInfo
-	var warnings []string
-	for _, res := range preSyncSet {
-		// Check if this resource still exists in the source
-		if typeSet, ok := sourceResources[res.Type]; ok {
-			if typeSet[res.Name] {
-				continue // Still in source, keep it
-			}
-		}
-
-		// Before marking for removal, re-check metadata to handle
-		// cross-source name collisions (bmz1.7). If another source
-		// overwrote this resource during sync, its metadata now
-		// points to the other source — skip removal in that case.
-		belongsToSource := resourceBelongsToSource(res.Name, res.Type, sourceKey, src.Name, repoPath)
-		if !belongsToSource && sourceKey != src.Name {
-			// Compatibility path: pre-upgrade metadata may still carry source_name
-			// while sourceKey was remapped to canonical source_id.
-			belongsToSource = resourceBelongsToSource(res.Name, res.Type, src.Name, src.Name, repoPath)
-		}
-		if !belongsToSource {
-			warnings = append(warnings,
-				fmt.Sprintf("skipping removal of %s/%s from %s: metadata now points to a different source", res.Type, res.Name, src.Name),
-			)
-			continue
-		}
-
-		// Resource was in repo but not in source -> removed
-		removed = append(removed, res)
-	}
-	return removed, warnings
+	return repo.DetectRemovedForSource(src, sourcePath, repoPath, preSyncResources, scanSourceResources, slog.Default())
 }
 
 func preSyncResourcesForSource(preSyncResources map[string][]resourceInfo, sourceKey, sourceName string) []resourceInfo {
-	preSyncSet := preSyncResources[sourceKey]
-
-	// Compatibility: legacy metadata may only carry source_name and no source_id.
-	// Merge in source-name keyed inventory so prune can still reconcile stale state.
-	if sourceName != "" && sourceName != sourceKey {
-		preSyncSet = append(preSyncSet, preSyncResources[sourceName]...)
-	}
-
-	if len(preSyncSet) <= 1 {
-		return preSyncSet
-	}
-
-	seen := make(map[string]bool, len(preSyncSet))
-	deduped := make([]resourceInfo, 0, len(preSyncSet))
-	for _, res := range preSyncSet {
-		key := string(res.Type) + "/" + res.Name
-		if seen[key] {
-			continue
-		}
-		seen[key] = true
-		deduped = append(deduped, res)
-	}
-
-	return deduped
+	return repo.PreSyncResourcesForSource(preSyncResources, sourceKey, sourceName)
 }
 
 func resourceBelongsToSource(name string, resType resource.ResourceType, sourceIdentifier, sourceName, repoPath string) bool {
-	if resType != resource.PackageType {
-		return resmeta.HasSource(name, resType, sourceIdentifier, repoPath)
-	}
-
-	pkgMeta, err := resmeta.LoadPackageMetadata(name, repoPath)
-	if err != nil {
-		return false
-	}
-
-	if pkgMeta.SourceID != "" && pkgMeta.SourceID == sourceIdentifier {
-		return true
-	}
-	if pkgMeta.SourceName != "" && pkgMeta.SourceName == sourceIdentifier {
-		return true
-	}
-
-	return sourceName != "" && pkgMeta.SourceName == sourceName
+	return repo.ResourceBelongsToSource(name, resType, sourceIdentifier, sourceName, repoPath)
 }
 
 // removeOrphanedResources removes resources that are no longer present in their sources,

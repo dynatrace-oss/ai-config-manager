@@ -62,9 +62,9 @@ func LoadCommand(filePath string) (*Resource, error) {
 
 // LoadCommandWithBase loads a command resource and calculates nested name if basePath is provided.
 //
-// Deprecated: Use LoadCommand instead. LoadCommand now auto-detects the base path
-// by finding the nearest commands/ directory. This function is kept for backward
-// compatibility and will be removed in v2.0.0.
+// This is the canonical explicit/testable loader path for callers that already
+// know the commands base directory. Use LoadCommand as a convenience wrapper
+// when auto-detecting the nearest commands/ directory is desired.
 //
 // basePath should be the directory to calculate relative paths from (e.g., "commands/")
 // If basePath is provided and file is nested, Name will contain the full nested path (e.g., "api/deploy")
@@ -135,9 +135,9 @@ func LoadCommandResource(filePath string) (*CommandResource, error) {
 
 // LoadCommandResourceWithBase loads a command resource with full details and calculates nested name.
 //
-// Deprecated: Use LoadCommandResource instead (which uses LoadCommand internally).
-// LoadCommand now auto-detects the base path by finding the nearest commands/ directory.
-// This function is kept for backward compatibility and will be removed in v2.0.0.
+// This is the canonical explicit/testable loader path for callers that already
+// know the commands base directory. Use LoadCommandResource as a convenience
+// wrapper when no explicit base is needed.
 func LoadCommandResourceWithBase(filePath string, basePath string) (*CommandResource, error) {
 	// Validate it's a .md file
 	if filepath.Ext(filePath) != ".md" {

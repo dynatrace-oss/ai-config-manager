@@ -469,3 +469,25 @@ description: Agent beyond max depth
 		}
 	}
 }
+
+func TestIsInAgentsSubtree(t *testing.T) {
+	tests := []struct {
+		name string
+		path string
+		want bool
+	}{
+		{name: "agents subtree", path: "/tmp/repo/agents/reviewer.md", want: true},
+		{name: "claude agents subtree", path: "/tmp/repo/.claude/agents/reviewer.md", want: true},
+		{name: "opencode agents subtree", path: "/tmp/repo/.opencode/agents/reviewer.md", want: true},
+		{name: "windows agents subtree", path: `C:\repo\agents\reviewer.md`, want: true},
+		{name: "non-agents path", path: "/tmp/repo/commands/build.md", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isInAgentsSubtree(tt.path); got != tt.want {
+				t.Fatalf("isInAgentsSubtree() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

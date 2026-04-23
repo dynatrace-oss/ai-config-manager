@@ -278,3 +278,48 @@ func TestSearchPriorityLocations(t *testing.T) {
 		t.Error("Expected to find opencode-command from .opencode/commands/")
 	}
 }
+
+func TestIsCommandsDirectory(t *testing.T) {
+	tests := []struct {
+		name string
+		path string
+		want bool
+	}{
+		{name: "plain commands dir", path: "/tmp/repo/commands", want: true},
+		{name: "claude commands dir", path: "/tmp/repo/.claude/commands", want: true},
+		{name: "opencode commands dir", path: "/tmp/repo/.opencode/commands", want: true},
+		{name: "commands subtree file", path: "/tmp/repo/commands/build.md", want: false},
+		{name: "windows commands path", path: `C:\repo\commands\build.md`, want: false},
+		{name: "non commands path", path: "/tmp/repo/agents/reviewer.md", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isCommandsDirectory(tt.path); got != tt.want {
+				t.Fatalf("isCommandsDirectory() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsInCommandsSubtree(t *testing.T) {
+	tests := []struct {
+		name string
+		path string
+		want bool
+	}{
+		{name: "commands subtree", path: "/tmp/repo/commands/build.md", want: true},
+		{name: "claude commands subtree", path: "/tmp/repo/.claude/commands/build.md", want: true},
+		{name: "opencode commands subtree", path: "/tmp/repo/.opencode/commands/api/build.md", want: true},
+		{name: "windows commands subtree", path: `C:\repo\commands\api\build.md`, want: true},
+		{name: "non-commands subtree", path: "/tmp/repo/agents/reviewer.md", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isInCommandsSubtree(tt.path); got != tt.want {
+				t.Fatalf("isInCommandsSubtree() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

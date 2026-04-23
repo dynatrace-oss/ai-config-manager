@@ -104,14 +104,6 @@ func TestImportLayout_NestedCommands(t *testing.T) {
 	})
 }
 
-// assertFileExists checks that a file exists
-func assertFileExists(t *testing.T, path string) {
-	t.Helper()
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		t.Errorf("File does not exist: %s", path)
-	}
-}
-
 // assertMetadataName checks that metadata file contains the expected name
 func assertMetadataName(t *testing.T, metadataPath, expectedName string) {
 	t.Helper()

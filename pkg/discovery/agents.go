@@ -325,16 +325,11 @@ func shouldSkipDirectory(name string) bool {
 // isInAgentsSubtree checks if a file path is within an agents/ directory subtree
 // Returns true if the path contains /agents/ or /.claude/agents/ or /.opencode/agents/
 func isInAgentsSubtree(path string) bool {
-	// Normalize path separators
-	normalizedPath := filepath.ToSlash(path)
-
-	// Check for agents/ directories
-	return strings.Contains(normalizedPath, "/agents/") ||
-		strings.Contains(normalizedPath, "/.claude/agents/") ||
-		strings.Contains(normalizedPath, "/.opencode/agents/") ||
-		strings.HasSuffix(normalizedPath, "/agents") ||
-		strings.HasSuffix(normalizedPath, "/.claude/agents") ||
-		strings.HasSuffix(normalizedPath, "/.opencode/agents")
+	inferredType, ok := resource.InferTypeFromPath(path)
+	if !ok {
+		return false
+	}
+	return inferredType == resource.Agent
 }
 
 // deduplicateAgents removes duplicate agents, keeping the first occurrence

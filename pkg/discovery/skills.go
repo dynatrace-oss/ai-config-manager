@@ -14,11 +14,9 @@ type SkillCandidate struct {
 	Resource *resource.Resource
 }
 
-// DiscoveryError represents an error encountered during resource discovery
-type DiscoveryError struct {
-	Path  string // Path where the error occurred
-	Error error  // The error that occurred
-}
+// DiscoveryError preserves source compatibility for existing discovery callers.
+// New code should prefer resource.DiscoveryError.
+type DiscoveryError = resource.DiscoveryError
 
 // SkillDiscoveryResult contains discovered skills and any errors encountered
 type SkillDiscoveryResult struct {

@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -1905,6 +1906,8 @@ func TestRunSync_DryRunPruneShowsPlannedCleanup(t *testing.T) {
 		t.Fatalf("expected dry-run prune output to include planned prune actions, got:\n%s", output.Stdout)
 	}
 
+	assertGoldenText(t, "repo_sync/dry_run_prune_stdout.txt", output.Stdout)
+
 	if _, err := os.Lstat(filepath.Join(repoPath, "commands", "pdf-command.md")); err != nil {
 		t.Fatalf("dry-run prune should not mutate repo, expected command to remain: %v", err)
 	}
@@ -2621,6 +2624,119 @@ func TestRunSync_TableModePrintsImmediateStartupBanner(t *testing.T) {
 	if output.Stderr != "" {
 		t.Fatalf("expected no stderr output, got:\n%s", output.Stderr)
 	}
+}
+
+func TestRunSync_Golden_TableSuccess(t *testing.T) {
+	source1 := createTestSource(t)
+	sources := []*repomanifest.Source{{Name: "golden-success-source", Path: source1}}
+	_, cleanup := setupTestManifest(t, sources)
+	defer cleanup()
+
+	oldFormat := syncFormatFlag
+	oldVerbose := syncVerboseFlag
+	syncFormatFlag = "table"
+	syncVerboseFlag = false
+	defer func() {
+		syncFormatFlag = oldFormat
+		syncVerboseFlag = oldVerbose
+	}()
+
+	output := captureOutput(t, func() {
+		if err := runSync(syncCmd, []string{}); err != nil {
+			t.Fatalf("runSync failed: %v", err)
+		}
+	})
+
+	if output.Stderr != "" {
+		t.Fatalf("expected no stderr output, got:\n%s", output.Stderr)
+	}
+
+	assertGoldenText(t, "repo_sync/success_table_stdout.txt", output.Stdout)
+}
+
+func TestRunSync_Golden_TablePartialFailure(t *testing.T) {
+	validSource := createTestSource(t)
+	sources := []*repomanifest.Source{
+		{Name: "golden-valid-source", Path: validSource},
+		{Name: "golden-invalid-source", Path: "/nonexistent/path/that/does/not/exist"},
+	}
+	_, cleanup := setupTestManifest(t, sources)
+	defer cleanup()
+
+	oldFormat := syncFormatFlag
+	oldVerbose := syncVerboseFlag
+	syncFormatFlag = "table"
+	syncVerboseFlag = false
+	defer func() {
+		syncFormatFlag = oldFormat
+		syncVerboseFlag = oldVerbose
+	}()
+
+	var runErr error
+	output := captureOutput(t, func() {
+		runErr = runSync(syncCmd, []string{})
+	})
+	if runErr == nil {
+		t.Fatal("expected completed-with-findings error for partial source failure, got nil")
+	}
+	if got := getCommandExitCode(runErr); got != commandExitCodeCompletedWithFindings {
+		t.Fatalf("sync exit code=%d want %d", got, commandExitCodeCompletedWithFindings)
+	}
+
+	if output.Stderr != "" {
+		t.Fatalf("expected no stderr output, got:\n%s", output.Stderr)
+	}
+
+	assertGoldenText(t, "repo_sync/partial_failure_table_stdout.txt", output.Stdout)
+}
+
+func TestRunSync_Golden_JSONSuccess(t *testing.T) {
+	source1 := createTestSource(t)
+	repoPath, cleanup := setupTestManifest(t, []*repomanifest.Source{{Name: "golden-json-source", Path: source1}})
+	defer cleanup()
+
+	oldFormat := syncFormatFlag
+	oldVerbose := syncVerboseFlag
+	syncFormatFlag = "json"
+	syncVerboseFlag = false
+	defer func() {
+		syncFormatFlag = oldFormat
+		syncVerboseFlag = oldVerbose
+	}()
+
+	var runErr error
+	output := captureOutput(t, func() {
+		runErr = runSync(syncCmd, []string{})
+	})
+	if runErr != nil {
+		t.Fatalf("runSync failed: %v", runErr)
+	}
+	if output.Stderr != "" {
+		t.Fatalf("expected no stderr output in json mode, got:\n%s", output.Stderr)
+	}
+
+	normalized := strings.ReplaceAll(output.Stdout, source1, "<SOURCE_PATH>")
+	normalized = strings.ReplaceAll(normalized, repoPath, "<REPO_PATH>")
+
+	var got syncOutput
+	if err := json.Unmarshal([]byte(normalized), &got); err != nil {
+		t.Fatalf("expected valid json output for golden assertion: %v", err)
+	}
+	if len(got.Sources) > 0 && got.Sources[0].Result != nil {
+		sort.Slice(got.Sources[0].Result.Added, func(i, j int) bool {
+			left := got.Sources[0].Result.Added[i]
+			right := got.Sources[0].Result.Added[j]
+			if left.Type == right.Type {
+				return left.Name < right.Name
+			}
+			return left.Type < right.Type
+		})
+	}
+	cannon, err := json.MarshalIndent(got, "", "  ")
+	if err != nil {
+		t.Fatalf("failed to re-marshal json golden payload: %v", err)
+	}
+	assertGoldenText(t, "repo_sync/success_json_stdout.txt", string(cannon)+"\n")
 }
 
 // TestRunSync_RemovesOrphansWithGitCommit tests that orphan removals are

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/repo"
+	"github.com/dynatrace-oss/ai-config-manager/v3/pkg/resource"
 	"github.com/olekukonko/tablewriter"
 	"gopkg.in/yaml.v3"
 )
@@ -152,20 +153,8 @@ func extractResourceName(path string) string {
 
 // extractResourceType extracts the resource type from a file path
 func extractResourceType(path string) string {
-	if strings.Contains(path, "/commands/") || strings.Contains(path, "\\commands\\") {
-		return "command"
-	}
-	if strings.Contains(path, "/skills/") || strings.Contains(path, "\\skills\\") {
-		return "skill"
-	}
-	if strings.Contains(path, "/agents/") || strings.Contains(path, "\\agents\\") {
-		return "agent"
-	}
-	if strings.Contains(path, "/packages/") || strings.Contains(path, "\\packages\\") {
-		return "package"
-	}
-	if strings.HasSuffix(path, ".package.json") {
-		return "package"
+	if inferredType, ok := resource.InferTypeFromPath(path); ok {
+		return string(inferredType)
 	}
 	if strings.HasSuffix(path, ".md") {
 		return "command"

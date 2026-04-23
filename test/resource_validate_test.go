@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -30,6 +31,32 @@ func TestCLIResourceValidate_PathStandaloneCommand(t *testing.T) {
 	}
 	if !strings.Contains(output, "command") {
 		t.Fatalf("expected command type in output, got: %s", output)
+	}
+}
+
+func TestCLIResourceValidate_PathAmbiguousMarkdownDefaultsToCommand(t *testing.T) {
+	setupTestEnvironment(t)
+
+	cmdPath := filepath.Join(t.TempDir(), "ambiguous.md")
+	if err := os.WriteFile(cmdPath, []byte("---\ndescription: ambiguous markdown\n---\n# Cmd\n"), 0644); err != nil {
+		t.Fatalf("write command: %v", err)
+	}
+
+	output, err := runAimgr(t, "resource", "validate", "--format=json", cmdPath)
+	if err != nil {
+		t.Fatalf("validate failed: %v\nOutput: %s", err, output)
+	}
+
+	var parsed map[string]interface{}
+	if err := json.Unmarshal([]byte(output), &parsed); err != nil {
+		t.Fatalf("parse json output: %v\nOutput: %s", err, output)
+	}
+
+	if parsed["resource_type"] != "command" {
+		t.Fatalf("expected resource_type=command, got: %v", parsed["resource_type"])
+	}
+	if parsed["valid"] != true {
+		t.Fatalf("expected valid=true, got: %v", parsed["valid"])
 	}
 }
 
@@ -403,6 +430,139 @@ func TestCLIResourceValidate_MissingRepoPath_MissingContextOutputIsMachineReadab
 			t.Fatalf("expected valid=false, got: %v", parsed["valid"])
 		}
 	})
+}
+
+func TestCLIResourceValidate_GoldenMachineReadableBaselines(t *testing.T) {
+	setupTestEnvironment(t)
+
+	scenario := t.TempDir()
+	for _, dir := range []string{"commands/team", "skills/helper", "agents", "packages"} {
+		if err := os.MkdirAll(filepath.Join(scenario, dir), 0755); err != nil {
+			t.Fatalf("mkdir %s: %v", dir, err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(scenario, "commands", "team", "deploy.md"), []byte("---\ndescription: deploy\n---\n# Deploy\n"), 0644); err != nil {
+		t.Fatalf("write command: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(scenario, "skills", "helper", "SKILL.md"), []byte("---\nname: helper\ndescription: helper\n---\n# Skill\n"), 0644); err != nil {
+		t.Fatalf("write skill: %v", err)
+	}
+
+	missingPkgPath := filepath.Join(scenario, "packages", "team.package.json")
+	pkgJSON := `{"name":"team-pkg","description":"team","resources":["command/team/deployy"]}`
+	if err := os.WriteFile(missingPkgPath, []byte(pkgJSON), 0644); err != nil {
+		t.Fatalf("write package: %v", err)
+	}
+
+	t.Run("json validation error baseline", func(t *testing.T) {
+		output, err := runAimgr(t, "resource", "validate", "--format=json", "--source-root", scenario, missingPkgPath)
+		if err == nil {
+			t.Fatalf("expected non-zero exit for missing refs")
+		}
+		if code := commandExitCode(err); code != 1 {
+			t.Fatalf("expected exit code 1, got %d\nOutput: %s", code, output)
+		}
+
+		stable := normalizeValidateMachineReadableOutput(t, output, scenario)
+		assertTestGoldenText(t, "resource_validate/package_missing_ref.json", stable)
+	})
+
+	t.Run("yaml validation error baseline", func(t *testing.T) {
+		output, err := runAimgr(t, "resource", "validate", "--format=yaml", "--source-root", scenario, missingPkgPath)
+		if err == nil {
+			t.Fatalf("expected non-zero exit for missing refs")
+		}
+		if code := commandExitCode(err); code != 1 {
+			t.Fatalf("expected exit code 1, got %d\nOutput: %s", code, output)
+		}
+
+		stable := normalizeValidateMachineReadableOutput(t, output, scenario)
+		assertTestGoldenText(t, "resource_validate/package_missing_ref.yaml", stable)
+	})
+}
+
+func normalizeValidateMachineReadableOutput(t *testing.T, output string, scenarioRoot string) string {
+	t.Helper()
+
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(output), &parsed); err == nil {
+		if diags, ok := parsed["diagnostics"].([]any); ok {
+			slices.SortFunc(diags, func(a, b any) int {
+				am := a.(map[string]any)
+				bm := b.(map[string]any)
+				ac := am["code"].(string)
+				bc := bm["code"].(string)
+				if ac < bc {
+					return -1
+				}
+				if ac > bc {
+					return 1
+				}
+				return 0
+			})
+			parsed["diagnostics"] = diags
+		}
+		stable, marshalErr := json.MarshalIndent(parsed, "", "  ")
+		if marshalErr != nil {
+			t.Fatalf("failed to marshal normalized JSON output: %v", marshalErr)
+		}
+		normalized := strings.ReplaceAll(string(stable), scenarioRoot, "<SCENARIO_ROOT>")
+		return normalized + "\n"
+	}
+
+	var parsedYAML map[string]any
+	if err := yaml.Unmarshal([]byte(output), &parsedYAML); err == nil {
+		if diags, ok := parsedYAML["diagnostics"].([]any); ok {
+			slices.SortFunc(diags, func(a, b any) int {
+				am := a.(map[string]any)
+				bm := b.(map[string]any)
+				ac := am["code"].(string)
+				bc := bm["code"].(string)
+				if ac < bc {
+					return -1
+				}
+				if ac > bc {
+					return 1
+				}
+				return 0
+			})
+			parsedYAML["diagnostics"] = diags
+		}
+		stable, marshalErr := yaml.Marshal(parsedYAML)
+		if marshalErr != nil {
+			t.Fatalf("failed to marshal normalized YAML output: %v", marshalErr)
+		}
+		normalized := strings.ReplaceAll(strings.ReplaceAll(string(stable), "\r\n", "\n"), scenarioRoot, "<SCENARIO_ROOT>")
+		return normalized
+	}
+
+	t.Fatalf("unexpected machine-readable output format:\n%s", output)
+	return ""
+}
+
+func assertTestGoldenText(t *testing.T, relPath string, actual string) {
+	t.Helper()
+
+	goldenPath := filepath.Join("testdata", "golden", relPath)
+	actual = strings.ReplaceAll(actual, "\r\n", "\n")
+
+	if os.Getenv("AIMGR_UPDATE_BASELINES") == "1" {
+		if err := os.MkdirAll(filepath.Dir(goldenPath), 0755); err != nil {
+			t.Fatalf("failed to create golden dir: %v", err)
+		}
+		if err := os.WriteFile(goldenPath, []byte(actual), 0644); err != nil {
+			t.Fatalf("failed to write golden file %s: %v", goldenPath, err)
+		}
+	}
+
+	expected, err := os.ReadFile(goldenPath)
+	if err != nil {
+		t.Fatalf("failed to read golden file %s: %v", goldenPath, err)
+	}
+
+	if actual != string(expected) {
+		t.Fatalf("golden mismatch for %s\nset AIMGR_UPDATE_BASELINES=1 to refresh", goldenPath)
+	}
 }
 
 func commandExitCode(err error) int {

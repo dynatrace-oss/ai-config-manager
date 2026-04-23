@@ -1221,9 +1221,33 @@ sources:
 	if !strings.Contains(output.Stdout, "agents/broken-agent.md") {
 		t.Fatalf("expected malformed agent path in install output, got:\n%s", output.Stdout)
 	}
+
+	assertGoldenText(t, "install/bootstrap_discovery_issues_stdout.txt", normalizeBootstrapDiscoveryWarningOutput(output.Stdout))
+
 	if _, err := os.Lstat(filepath.Join(projectPath, ".claude", "skills", "bootstrap-skill")); err != nil {
 		t.Fatalf("expected installed skill symlink: %v", err)
 	}
+}
+
+func normalizeBootstrapDiscoveryWarningOutput(stdout string) string {
+	lines := strings.Split(strings.ReplaceAll(stdout, "\r\n", "\n"), "\n")
+	kept := make([]string, 0, 4)
+	for _, line := range lines {
+		trimmed := strings.TrimRight(line, "\r")
+		if strings.Contains(trimmed, "Discovery Issues for source 'bootstrap-source'") {
+			kept = append(kept, "Discovery Issues for source 'bootstrap-source' (1)")
+			continue
+		}
+		if strings.Contains(trimmed, "agents/broken-agent.md") {
+			kept = append(kept, "agents/broken-agent.md")
+			continue
+		}
+		if strings.Contains(trimmed, "mapping values are not allowed in this context") {
+			kept = append(kept, "mapping values are not allowed in this context")
+		}
+	}
+
+	return strings.Join(kept, "\n") + "\n"
 }
 
 func TestInstallFromManifest_SecondRunNoOpForSourceBootstrap(t *testing.T) {
