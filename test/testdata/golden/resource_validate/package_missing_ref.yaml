@@ -1,0 +1,18 @@
+context:
+    kind: source-root
+    source_root: <SCENARIO_ROOT>
+diagnostics:
+    - code: missing_package_ref
+      message: missing referenced resource "command/team/deployy"
+      missing_reference: command/team/deployy
+      resource_type: package
+      severity: error
+      suggestion: Did you mean "command/team/deploy"?
+mode: static+contextual
+resolved_path: <SCENARIO_ROOT>/packages/team.package.json
+resource_type: package
+summary:
+    error_count: 1
+    warning_count: 0
+target: <SCENARIO_ROOT>/packages/team.package.json
+valid: false

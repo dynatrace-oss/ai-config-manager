@@ -1,0 +1,10 @@
+Syncing from 2 configured source(s)...
+
+  Syncing golden-valid-source (local)...
+  Syncing golden-invalid-source (local)...
+  ✓ golden-valid-source (local)    — 8 added, 0 updated
+  ✗ golden-invalid-source (local)  — error: failed to discover commands: path does not exist: stat /nonexistent/path/that/does/not/exist: no such file or directory
+
+Sync complete: 1/2 sources, 8 resources synced, 0 removed
+  1 source(s) failed: golden-invalid-source
+

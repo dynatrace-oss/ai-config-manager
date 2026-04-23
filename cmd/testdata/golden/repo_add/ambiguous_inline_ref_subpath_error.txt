@@ -1,0 +1,1 @@
+ambiguous GitHub shorthand "gh:owner/repo@feature/x/skills": inline @ref/subpath forms cannot safely represent refs containing '/'; use explicit flags instead (e.g., gh:owner/repo --ref <ref> --subpath <path>)

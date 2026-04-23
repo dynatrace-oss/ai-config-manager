@@ -1,0 +1,3 @@
+Discovery Issues for source 'bootstrap-source' (1)
+agents/broken-agent.md
+agents/broken-agent.md

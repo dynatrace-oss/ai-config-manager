@@ -1,0 +1,7 @@
+Syncing from 1 configured source(s)...
+
+  Syncing golden-success-source (local)...
+  ✓ golden-success-source (local)  — 8 added, 0 updated
+
+Sync complete: 1/1 sources, 8 resources synced, 0 removed
+

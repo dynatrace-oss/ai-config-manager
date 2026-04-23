@@ -1,0 +1,72 @@
+{
+  "sources": [
+    {
+      "name": "golden-json-source",
+      "path": "\u003cSOURCE_PATH\u003e",
+      "mode": "local",
+      "result": {
+        "added": [
+          {
+            "name": "code-reviewer",
+            "type": "agent",
+            "path": "\u003cSOURCE_PATH\u003e/agents/code-reviewer.md"
+          },
+          {
+            "name": "sync-test-agent",
+            "type": "agent",
+            "path": "\u003cSOURCE_PATH\u003e/agents/sync-test-agent.md"
+          },
+          {
+            "name": "pdf-command",
+            "type": "command",
+            "path": "\u003cSOURCE_PATH\u003e/commands/pdf-command.md"
+          },
+          {
+            "name": "sync-test-cmd",
+            "type": "command",
+            "path": "\u003cSOURCE_PATH\u003e/commands/sync-test-cmd.md"
+          },
+          {
+            "name": "test-command",
+            "type": "command",
+            "path": "\u003cSOURCE_PATH\u003e/commands/test-command.md"
+          },
+          {
+            "name": "image-processing",
+            "type": "skill",
+            "path": "\u003cSOURCE_PATH\u003e/skills/image-processing"
+          },
+          {
+            "name": "pdf-processing",
+            "type": "skill",
+            "path": "\u003cSOURCE_PATH\u003e/skills/pdf-processing"
+          },
+          {
+            "name": "sync-test-skill",
+            "type": "skill",
+            "path": "\u003cSOURCE_PATH\u003e/skills/sync-test-skill"
+          }
+        ],
+        "updated": [],
+        "skipped": [],
+        "failed": [],
+        "command_count": 3,
+        "skill_count": 3,
+        "agent_count": 2,
+        "package_count": 0
+      },
+      "removed_count": 0,
+      "failed": false
+    }
+  ],
+  "removed": [],
+  "summary": {
+    "sources_total": 1,
+    "sources_synced": 1,
+    "sources_failed": 0,
+    "resources_added": 8,
+    "resources_updated": 0,
+    "resources_removed": 0,
+    "resources_failed": 0
+  }
+}

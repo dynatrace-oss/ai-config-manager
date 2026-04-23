@@ -134,25 +134,12 @@ func (m *Manager) bulkCommitPaths(result *BulkImportResult) []string {
 			return
 		}
 
-		resType, err := resource.DetectType(sourcePath)
+		res, err := resource.Load(sourcePath)
 		if err != nil {
 			return
 		}
 
-		var res *resource.Resource
-		switch resType {
-		case resource.Command:
-			res, err = resource.LoadCommand(sourcePath)
-		case resource.Skill:
-			res, err = resource.LoadSkill(sourcePath)
-		case resource.Agent:
-			res, err = resource.LoadAgent(sourcePath)
-		default:
-			return
-		}
-		if err != nil {
-			return
-		}
+		resType := res.Type
 
 		paths = append(paths,
 			m.GetPathForResource(res),

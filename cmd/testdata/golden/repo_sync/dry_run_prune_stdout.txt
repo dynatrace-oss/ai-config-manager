@@ -1,0 +1,16 @@
+Syncing from 1 configured source(s)...
+Mode: DRY RUN (preview only)
+Prune mode: enabled (--prune)
+
+  Syncing dryrun-preview-source (local)...
+
+⚠ Removed resources may have active project installations.
+  Run 'aimgr repair' in affected projects to clean up broken symlinks.
+
+
+Would prune 1 resource(s) no longer in effective source definitions:
+  - command/pdf-command (from dryrun-preview-source)
+  ✓ dryrun-preview-source (local)  — 0 added, 7 updated, 1 removed
+
+Sync complete: 1/1 sources, 7 resources synced, 0 removed
+
