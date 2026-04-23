@@ -487,7 +487,7 @@ func TestImportFromLocalPathWithMode_DiscoveryModes(t *testing.T) {
 					t.Fatalf("failed to init repo: %v", err)
 				}
 
-				_, err := importFromLocalPathWithMode(
+				err := importFromLocalPathWithMode(
 					sourceDir,
 					manager,
 					nil,
@@ -556,7 +556,7 @@ func TestImportFromLocalPathWithMode_MarketplaceRequirementsAndZeroResolvable(t 
 				t.Fatalf("failed to init repo: %v", err)
 			}
 
-			_, err := importFromLocalPathWithMode(sourceDir, manager, nil, "file://"+sourceDir, string(source.Local), "", "symlink", repomanifest.DiscoveryModeMarketplace, "test-source", "src-test")
+			err := importFromLocalPathWithMode(sourceDir, manager, nil, "file://"+sourceDir, string(source.Local), "", "symlink", repomanifest.DiscoveryModeMarketplace, "test-source", "src-test")
 			if err == nil {
 				t.Fatal("expected marketplace-mode error when marketplace.json is missing")
 			}
@@ -578,7 +578,7 @@ func TestImportFromLocalPathWithMode_MarketplaceRequirementsAndZeroResolvable(t 
 						t.Fatalf("failed to init repo: %v", err)
 					}
 
-					_, err := importFromLocalPathWithMode(sourceDir, manager, nil, "file://"+sourceDir, string(source.Local), "", "symlink", mode, "test-source", "src-test")
+					err := importFromLocalPathWithMode(sourceDir, manager, nil, "file://"+sourceDir, string(source.Local), "", "symlink", mode, "test-source", "src-test")
 					if err == nil {
 						t.Fatalf("expected zero-resolvable error for mode %q", mode)
 					}
@@ -656,7 +656,7 @@ func TestImportFromLocalPathWithMode_RepoMarketplaceSubpathFileInput(t *testing.
 		}
 
 		// Simulate remote clone + subpath resolution ending in marketplace.json.
-		_, err := importFromLocalPathWithMode(
+		err := importFromLocalPathWithMode(
 			marketplaceFile,
 			manager,
 			nil,
@@ -781,7 +781,7 @@ func TestImportFromLocalPathWithMode_RepoPluginDirectoryMarketplaceSubpathFileIn
 					t.Fatalf("failed to init repo: %v", err)
 				}
 
-				_, err := importFromLocalPathWithMode(
+				err := importFromLocalPathWithMode(
 					marketplaceFile,
 					manager,
 					nil,
@@ -906,7 +906,7 @@ func TestImportFromLocalPathWithMode_PluginDirectoryMarketplaceUsesRepoRootBase(
 					t.Fatalf("failed to init repo: %v", err)
 				}
 
-				_, err := importFromLocalPathWithMode(
+				err := importFromLocalPathWithMode(
 					sourceDir,
 					manager,
 					nil,
@@ -978,7 +978,7 @@ func TestImportFromLocalPathWithMode_MarketplaceImportsReferencedDotAgentFiles(t
 			t.Fatalf("failed to init repo: %v", err)
 		}
 
-		_, err := importFromLocalPathWithMode(
+		err := importFromLocalPathWithMode(
 			sourceDir,
 			manager,
 			nil,

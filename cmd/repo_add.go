@@ -642,13 +642,13 @@ func importFromLocalPath(
 	sourceType string, // "local", "github", "git-url", "test"
 	ref string, // Git ref (empty for local/test)
 ) error {
-	_, err := importFromLocalPathWithMode(localPath, manager, filter, sourceURL, sourceType, ref, "copy", repomanifest.DiscoveryModeAuto, "", "")
+	err := importFromLocalPathWithMode(localPath, manager, filter, sourceURL, sourceType, ref, "copy", repomanifest.DiscoveryModeAuto, "", "")
 	return err
 }
 
 // importFromLocalPathWithMode is the same as importFromLocalPath but allows specifying import mode.
-// It returns the BulkOperationResult for the caller to handle. When syncSilentMode is true,
-// all progress/result output is suppressed so the caller (runSync) can format it uniformly.
+// When syncSilentMode is true, all progress/result output is suppressed so the caller (runSync)
+// can format it uniformly.
 //
 //nolint:gocyclo // Multi-phase import pipeline (discover, filter, import, metadata, git) that must stay cohesive for correctness.
 func importFromLocalPathWithMode(
@@ -662,13 +662,150 @@ func importFromLocalPathWithMode(
 	discoveryMode string, // "auto", "marketplace", "generic"
 	sourceName string, // Explicit source name from manifest (empty = derive from URL)
 	sourceID string, // Source ID for metadata tracking (empty = none)
-) (*output.BulkOperationResult, error) {
+) error {
 	discovered, err := discoverImportResourcesByMode(localPath, discoveryMode)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	return importDiscoveredResources(localPath, manager, filter, sourceURL, sourceType, ref, importMode, sourceName, sourceID, discovered)
+	_, err = importDiscoveredResources(localPath, manager, filter, sourceURL, sourceType, ref, importMode, sourceName, sourceID, discovered)
+	return err
+}
+
+func filterAndReportDiscoveredResources(
+	filter []string,
+	commands []*resource.Resource,
+	skills []*resource.Resource,
+	agents []*resource.Resource,
+	packages []*resource.Package,
+	marketplacePackages []*marketplace.PackageInfo,
+	totalResources int,
+	isHumanFormat bool,
+) ([]*resource.Resource, []*resource.Resource, []*resource.Resource, []*resource.Package, error) {
+	origCommandCount := len(commands)
+	origSkillCount := len(skills)
+	origAgentCount := len(agents)
+	origPackageCount := len(packages)
+
+	if len(filter) == 0 {
+		if isHumanFormat {
+			fmt.Printf("Found: %d commands, %d skills, %d agents, %d packages\n", len(commands), len(skills), len(agents), len(packages))
+		}
+		return commands, skills, agents, packages, nil
+	}
+
+	var err error
+	commands, skills, agents, packages, err = applyFilter(filter, commands, skills, agents, packages)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+
+	filteredTotal := len(commands) + len(skills) + len(agents) + len(packages)
+	if filteredTotal == 0 && len(marketplacePackages) == 0 {
+		if isHumanFormat {
+			fmt.Printf("⚠ Warning: Filter '%s' matched 0 resources (found %d total)\n\n", strings.Join(filter, ", "), totalResources)
+		}
+		return nil, nil, nil, nil, nil
+	}
+
+	if isHumanFormat {
+		fmt.Printf("Found: %d commands, %d skills, %d agents, %d packages", origCommandCount, origSkillCount, origAgentCount, origPackageCount)
+		if filteredTotal < totalResources {
+			fmt.Printf(" (filtered to %d matching '%s')\n", filteredTotal, strings.Join(filter, ", "))
+		} else {
+			fmt.Println()
+		}
+	}
+
+	return commands, skills, agents, packages, nil
+}
+
+func printMarketplaceDiscoverySummary(
+	absPath string,
+	marketplacePath string,
+	marketplaceConfig *marketplace.MarketplaceConfig,
+	marketplacePackages []*marketplace.PackageInfo,
+	isHumanFormat bool,
+) {
+	if marketplaceConfig == nil || !isHumanFormat {
+		return
+	}
+
+	relPath := strings.TrimPrefix(marketplacePath, absPath)
+	if relPath == "" {
+		relPath = "marketplace.json"
+	} else {
+		relPath = strings.TrimPrefix(relPath, string(filepath.Separator))
+	}
+	fmt.Printf("Found marketplace: %s (%d plugins)\n", relPath, len(marketplaceConfig.Plugins))
+	fmt.Println("\nGenerating packages from marketplace:")
+	for _, pkgInfo := range marketplacePackages {
+		fmt.Printf("  ✓ %s (%d resources)\n", pkgInfo.Package.Name, len(pkgInfo.Package.Resources))
+	}
+}
+
+func collectImportPaths(
+	localPath string,
+	commands []*resource.Resource,
+	skills []*resource.Resource,
+	agents []*resource.Resource,
+	packages []*resource.Package,
+	marketplacePackages []*marketplace.PackageInfo,
+) []string {
+	allPaths := make([]string, 0, len(commands)+len(skills)+len(agents)+len(packages))
+
+	for _, cmd := range commands {
+		allPaths = append(allPaths, cmd.Path)
+	}
+	for _, skill := range skills {
+		allPaths = append(allPaths, skill.Path)
+	}
+	for _, agent := range agents {
+		allPaths = append(allPaths, agent.Path)
+	}
+	for _, pkg := range packages {
+		pkgPath, err := findPackageFile(localPath, pkg.Name)
+		if err == nil {
+			allPaths = append(allPaths, pkgPath)
+		}
+	}
+	for _, pkgInfo := range marketplacePackages {
+		for _, resRef := range pkgInfo.Package.Resources {
+			resType, resName, err := resource.ParseResourceReference(resRef)
+			if err != nil {
+				continue
+			}
+
+			resPath, err := findResourceInPath(pkgInfo.SourcePath, resType, resName)
+			if err == nil {
+				allPaths = append(allPaths, resPath)
+			}
+		}
+	}
+
+	return allPaths
+}
+
+func saveGeneratedMarketplacePackages(
+	manager *repo.Manager,
+	marketplacePackages []*marketplace.PackageInfo,
+	sourceURL string,
+	sourceType string,
+	ref string,
+	sourceName string,
+	sourceID string,
+) {
+	if dryRunFlag {
+		return
+	}
+
+	for _, pkgInfo := range marketplacePackages {
+		if err := persistGeneratedMarketplacePackage(manager, pkgInfo.Package, sourceURL, sourceType, ref, sourceName, sourceID); err != nil {
+			if !syncSilentMode {
+				fmt.Printf("⚠ Warning: Failed to save package %s: %v\n", pkgInfo.Package.Name, err)
+			}
+		}
+	}
 }
 
 func persistGeneratedMarketplacePackage(
@@ -749,114 +886,35 @@ func importDiscoveredResources(
 	// Get absolute path for display
 	absPath, _ := filepath.Abs(localPath)
 
-	// Store original counts for reporting
-	origCommandCount := len(commands)
-	origSkillCount := len(skills)
-	origAgentCount := len(agents)
-	origPackageCount := len(packages)
-
 	// Determine if we should print informational output.
 	// When syncSilentMode is true, all printing is suppressed regardless of format.
 	isHumanFormat := !syncSilentMode && (addFormatFlag == "" || addFormatFlag == "table")
 
-	// Apply filter if specified
-	if len(filter) > 0 {
-		var err error
-		commands, skills, agents, packages, err = applyFilter(filter, commands, skills, agents, packages)
-		if err != nil {
-			return nil, err
-		}
-
-		// Check if filter matched any resources
-		filteredTotal := len(commands) + len(skills) + len(agents) + len(packages)
-		if filteredTotal == 0 && len(marketplacePackages) == 0 {
-			if isHumanFormat {
-				fmt.Printf("⚠ Warning: Filter '%s' matched 0 resources (found %d total)\n\n", strings.Join(filter, ", "), totalResources)
-			}
-			return nil, nil
-		}
-
-		// Show filtered counts
-		if isHumanFormat {
-			fmt.Printf("Found: %d commands, %d skills, %d agents, %d packages", origCommandCount, origSkillCount, origAgentCount, origPackageCount)
-			if filteredTotal < totalResources {
-				fmt.Printf(" (filtered to %d matching '%s')\n", filteredTotal, strings.Join(filter, ", "))
-			} else {
-				fmt.Println()
-			}
-		}
-	} else {
-		if isHumanFormat {
-			fmt.Printf("Found: %d commands, %d skills, %d agents, %d packages\n", len(commands), len(skills), len(agents), len(packages))
-		}
+	var err error
+	commands, skills, agents, packages, err = filterAndReportDiscoveredResources(
+		filter,
+		commands,
+		skills,
+		agents,
+		packages,
+		marketplacePackages,
+		totalResources,
+		isHumanFormat,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if commands == nil && skills == nil && agents == nil && packages == nil && len(marketplacePackages) == 0 {
+		return nil, nil
 	}
 
-	// Display marketplace info if found
-	if marketplaceConfig != nil {
-		if isHumanFormat {
-			relPath := strings.TrimPrefix(marketplacePath, absPath)
-			if relPath == "" {
-				relPath = "marketplace.json"
-			} else {
-				relPath = strings.TrimPrefix(relPath, string(filepath.Separator))
-			}
-			fmt.Printf("Found marketplace: %s (%d plugins)\n", relPath, len(marketplaceConfig.Plugins))
-
-			// Generate packages from marketplace
-			fmt.Println("\nGenerating packages from marketplace:")
-		}
-		if isHumanFormat {
-			for _, pkgInfo := range marketplacePackages {
-				fmt.Printf("  ✓ %s (%d resources)\n", pkgInfo.Package.Name, len(pkgInfo.Package.Resources))
-			}
-		}
-	}
+	printMarketplaceDiscoverySummary(absPath, marketplacePath, marketplaceConfig, marketplacePackages, isHumanFormat)
 
 	if isHumanFormat {
 		fmt.Println()
 	}
 
-	// Collect all resource paths
-	var allPaths []string
-
-	// Add commands - use discovered paths directly
-	for _, cmd := range commands {
-		allPaths = append(allPaths, cmd.Path)
-	}
-	// Add skills - use discovered paths directly
-	for _, skill := range skills {
-		allPaths = append(allPaths, skill.Path)
-	}
-
-	// Add agents - use discovered paths directly
-	for _, agent := range agents {
-		allPaths = append(allPaths, agent.Path)
-	}
-
-	// Add packages
-	for _, pkg := range packages {
-		pkgPath, err := findPackageFile(localPath, pkg.Name)
-		if err == nil {
-			allPaths = append(allPaths, pkgPath)
-		}
-	}
-
-	// Add resources from marketplace-generated packages
-	for _, pkgInfo := range marketplacePackages {
-		// Import resources for this package
-		for _, resRef := range pkgInfo.Package.Resources {
-			resType, resName, err := resource.ParseResourceReference(resRef)
-			if err != nil {
-				continue // Skip invalid references
-			}
-
-			// Find the resource file in the plugin source directory
-			resPath, err := findResourceInPath(pkgInfo.SourcePath, resType, resName)
-			if err == nil {
-				allPaths = append(allPaths, resPath)
-			}
-		}
-	}
+	allPaths := collectImportPaths(localPath, commands, skills, agents, packages, marketplacePackages)
 
 	// Import using bulk add
 	opts := repo.BulkImportOptions{
@@ -881,17 +939,7 @@ func importDiscoveredResources(
 		return bulkOpResult, err
 	}
 
-	// Save marketplace-generated packages if not in dry-run mode
-	if !dryRunFlag {
-		for _, pkgInfo := range marketplacePackages {
-			if err := persistGeneratedMarketplacePackage(manager, pkgInfo.Package, sourceURL, sourceType, ref, sourceName, sourceID); err != nil {
-				if !syncSilentMode {
-					fmt.Printf("⚠ Warning: Failed to save package %s: %v\n", pkgInfo.Package.Name, err)
-				}
-				continue
-			}
-		}
-	}
+	saveGeneratedMarketplacePackages(manager, marketplacePackages, sourceURL, sourceType, ref, sourceName, sourceID)
 
 	// Convert bulk result to output type
 	bulkOpResult := output.FromBulkImportResult(bulkResult)
@@ -952,7 +1000,7 @@ func addBulkFromLocalWithMode(localPath string, manager *repo.Manager, filter []
 				sourceName = filepath.Base(filepath.Dir(absPath))
 			}
 
-			_, importErr := importFromLocalPathWithMode(localPath, manager, filter, sourceURL, sourceType, "", importMode, discoveryFlag, sourceName, sourceID)
+			importErr := importFromLocalPathWithMode(localPath, manager, filter, sourceURL, sourceType, "", importMode, discoveryFlag, sourceName, sourceID)
 			return importErr
 		}
 		return addSingleResource(localPath, manager)
@@ -991,8 +1039,7 @@ func addBulkFromLocalWithMode(localPath string, manager *repo.Manager, filter []
 	}
 
 	// Call common import function with import mode
-	var importErr error
-	_, importErr = importFromLocalPathWithMode(localPath, manager, filter, sourceURL, sourceType, "", importMode, discoveryFlag, sourceName, sourceID)
+	importErr := importFromLocalPathWithMode(localPath, manager, filter, sourceURL, sourceType, "", importMode, discoveryFlag, sourceName, sourceID)
 	return importErr
 }
 
@@ -1079,7 +1126,7 @@ func addBulkFromGitHubWithFilter(parsed *source.ParsedSource, manager *repo.Mana
 	}
 
 	// Call common import function with workspace path
-	_, err = importFromLocalPathWithMode(searchPath, manager, filter, parsed.URL, sourceType, parsed.Ref, "copy", discoveryFlag, sourceName, sourceID)
+	err = importFromLocalPathWithMode(searchPath, manager, filter, parsed.URL, sourceType, parsed.Ref, "copy", discoveryFlag, sourceName, sourceID)
 	return err
 }
 

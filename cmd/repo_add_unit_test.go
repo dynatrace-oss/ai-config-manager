@@ -563,7 +563,7 @@ func TestImportFromLocalPathWithMode_GenericDiscoveryWarningMatrix_SkillsReadmeI
 		r, w, _ := os.Pipe()
 		os.Stdout = w
 
-		_, err := importFromLocalPathWithMode(
+		err := importFromLocalPathWithMode(
 			sourceDir,
 			manager,
 			nil,

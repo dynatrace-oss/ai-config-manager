@@ -2,6 +2,7 @@ package test
 
 import (
 	"go/ast"
+	"go/build"
 	"go/parser"
 	"go/token"
 	"os"
@@ -35,70 +36,73 @@ func collectExportedSymbols(t *testing.T, dir string) []string {
 	t.Helper()
 
 	fset := token.NewFileSet()
-	pkgMap, err := parser.ParseDir(fset, dir, func(fi os.FileInfo) bool {
-		name := fi.Name()
-		return strings.HasSuffix(name, ".go") && !strings.HasSuffix(name, "_test.go")
-	}, parser.SkipObjectResolution)
+	pkgInfo, err := build.Default.ImportDir(dir, build.IgnoreVendor)
 	if err != nil {
-		t.Fatalf("parse dir %s: %v", dir, err)
+		t.Fatalf("import dir %s: %v", dir, err)
 	}
 
 	symbols := map[string]struct{}{}
+	files := append([]string{}, pkgInfo.GoFiles...)
+	files = append(files, pkgInfo.CgoFiles...)
 
-	for _, pkg := range pkgMap {
-		for _, file := range pkg.Files {
-			for _, decl := range file.Decls {
-				switch d := decl.(type) {
-				case *ast.GenDecl:
-					switch d.Tok {
-					case token.CONST:
-						for _, spec := range d.Specs {
-							vs, ok := spec.(*ast.ValueSpec)
-							if !ok {
-								continue
-							}
-							for _, name := range vs.Names {
-								if name.IsExported() {
-									symbols["const "+name.Name] = struct{}{}
-								}
-							}
-						}
-					case token.VAR:
-						for _, spec := range d.Specs {
-							vs, ok := spec.(*ast.ValueSpec)
-							if !ok {
-								continue
-							}
-							for _, name := range vs.Names {
-								if name.IsExported() {
-									symbols["var "+name.Name] = struct{}{}
-								}
-							}
-						}
-					case token.TYPE:
-						for _, spec := range d.Specs {
-							ts, ok := spec.(*ast.TypeSpec)
-							if !ok {
-								continue
-							}
-							if ts.Name.IsExported() {
-								symbols["type "+ts.Name.Name] = struct{}{}
-							}
-						}
-					}
-				case *ast.FuncDecl:
-					if !d.Name.IsExported() {
-						continue
-					}
-					if d.Recv == nil {
-						symbols["func "+d.Name.Name] = struct{}{}
-						continue
-					}
+	for _, fileName := range files {
+		path := filepath.Join(dir, fileName)
+		file, err := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
+		if err != nil {
+			t.Fatalf("parse file %s: %v", path, err)
+		}
 
-					recv := receiverBaseName(d.Recv.List[0].Type)
-					if recv != "" {
-						symbols["method "+recv+"."+d.Name.Name] = struct{}{}
+		for _, decl := range file.Decls {
+			switch d := decl.(type) {
+			case *ast.GenDecl:
+				switch d.Tok {
+				case token.CONST:
+					for _, spec := range d.Specs {
+						vs, ok := spec.(*ast.ValueSpec)
+						if !ok {
+							continue
+						}
+						for _, name := range vs.Names {
+							if name.IsExported() {
+								symbols["const "+name.Name] = struct{}{}
+							}
+						}
 					}
+				case token.VAR:
+					for _, spec := range d.Specs {
+						vs, ok := spec.(*ast.ValueSpec)
+						if !ok {
+							continue
+						}
+						for _, name := range vs.Names {
+							if name.IsExported() {
+								symbols["var "+name.Name] = struct{}{}
+							}
+						}
+					}
+				case token.TYPE:
+					for _, spec := range d.Specs {
+						ts, ok := spec.(*ast.TypeSpec)
+						if !ok {
+							continue
+						}
+						if ts.Name.IsExported() {
+							symbols["type "+ts.Name.Name] = struct{}{}
+						}
+					}
+				}
+			case *ast.FuncDecl:
+				if !d.Name.IsExported() {
+					continue
+				}
+				if d.Recv == nil {
+					symbols["func "+d.Name.Name] = struct{}{}
+					continue
+				}
+
+				recv := receiverBaseName(d.Recv.List[0].Type)
+				if recv != "" {
+					symbols["method "+recv+"."+d.Name.Name] = struct{}{}
 				}
 			}
 		}
