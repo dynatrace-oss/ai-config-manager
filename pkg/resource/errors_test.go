@@ -76,7 +76,12 @@ func TestSuggestFix(t *testing.T) {
 		{
 			name:      "YAML mapping error",
 			err:       errors.New("yaml: line 2: mapping values are not allowed"),
-			wantMatch: "Quote the description field",
+			wantMatch: "Quote values containing ':'",
+		},
+		{
+			name:      "YAML mapping error mentions nested-mapping fix (issue #12)",
+			err:       errors.New("yaml: line 3: mapping values are not allowed in this context"),
+			wantMatch: "indented lines",
 		},
 		{
 			name:      "name mismatch",

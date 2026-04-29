@@ -2597,6 +2597,35 @@ func TestRunSync_JSONOutputIncludesDiscoveryIssues(t *testing.T) {
 	}
 }
 
+// TestRunSync_DiscoveryIssueSuggestionMentionsNestedMapping is a regression test
+// for https://github.com/dynatrace-oss/ai-config-manager/issues/12. When a user
+// writes a granular permission block like `bash: "*": ask` (intending a nested
+// mapping but on a single line) the YAML parser fails with
+// "mapping values are not allowed in this context" and the agent silently fails
+// to load. The discovery-issue suggestion must explicitly tell the user that
+// nested mappings need their own indented lines, not just hint at quoting.
+func TestRunSync_DiscoveryIssueSuggestionMentionsNestedMapping(t *testing.T) {
+	sourceDir := createSourceWithMalformedAgentAndValidCommand(t)
+	_, cleanup := setupTestManifest(t, []*repomanifest.Source{{Name: "broken-source", Path: sourceDir}})
+	defer cleanup()
+
+	output := captureOutput(t, func() {
+		if err := runSync(syncCmd, []string{}); err != nil {
+			t.Fatalf("runSync failed: %v", err)
+		}
+	})
+
+	if !strings.Contains(output.Stdout, "agents/broken-agent.md") {
+		t.Fatalf("expected malformed agent path in sync output, got:\n%s", output.Stdout)
+	}
+	if !strings.Contains(output.Stdout, "indented lines") {
+		t.Fatalf("expected suggestion to mention nested-mapping fix ('indented lines'), got:\n%s", output.Stdout)
+	}
+	if !strings.Contains(output.Stdout, "permissions:") {
+		t.Fatalf("expected suggestion to include a corrected 'permissions:' example, got:\n%s", output.Stdout)
+	}
+}
+
 func TestRunSync_TableModePrintsImmediateStartupBanner(t *testing.T) {
 	source1 := createTestSource(t)
 	sources := []*repomanifest.Source{{Name: "test-source-1", Path: source1}}
