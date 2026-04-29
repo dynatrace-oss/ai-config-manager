@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Discovery error suggestion for `mapping values are not allowed` now covers both common causes** — when an agent's frontmatter contained a granular permission block written on a single line (e.g. `bash: "*": ask`), the YAML parser failed with `mapping values are not allowed in this context` and `aimgr repo sync` skipped the agent. The auto-generated suggestion only mentioned quoting the description field, leaving users guessing what to fix; the suggestion now explicitly covers both the unquoted-value case and the nested-mapping-on-one-line case (with a corrected `permissions:` example), so the failure surfaces actionable guidance instead of feeling silent. Fixes [#12](https://github.com/dynatrace-oss/ai-config-manager/issues/12).
+
 ## [3.9.0] - 2026-04-18
 
 ### Added
