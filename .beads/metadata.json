@@ -1,7 +1,7 @@
 {
   "database": "dolt",
   "backend": "dolt",
-  "dolt_mode": "server",
+  "dolt_mode": "embedded",
   "dolt_database": "ai_config_manager",
   "project_id": "e714452d-ef65-4473-9372-d9bc8872648d"
 }
