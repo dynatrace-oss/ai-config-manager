@@ -89,7 +89,14 @@ func SuggestFix(err error) string {
 	// YAML parsing errors
 	if strings.Contains(errMsg, "mapping values are not allowed") ||
 		strings.Contains(errMsg, "did not find expected key") {
-		return "Quote the description field if it contains colons or special characters (e.g., description: \"My tool: a helper\")"
+		return "YAML mapping error: an unquoted ':' inside a scalar value, " +
+			"or a nested mapping written on the same line as its parent key.\n" +
+			"  Fixes:\n" +
+			"    - Quote values containing ':' (e.g., description: \"My tool: a helper\")\n" +
+			"    - Put nested mappings on their own indented lines, e.g.:\n" +
+			"        permissions:\n" +
+			"          bash:\n" +
+			"            \"*\": ask"
 	}
 
 	if strings.Contains(errMsg, "yaml: unmarshal errors") {
