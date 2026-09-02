@@ -4,7 +4,7 @@ go 1.25.6
 
 require (
 	github.com/adrg/xdg v0.5.3
-	github.com/gobwas/glob v0.2.3
+	github.com/gobwas/glob v1.0.0
 	github.com/olekukonko/tablewriter v1.1.4
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
