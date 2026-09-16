@@ -1,6 +1,6 @@
 module github.com/dynatrace-oss/ai-config-manager/v3
 
-go 1.25.6
+go 1.26.0
 
 require (
 	github.com/adrg/xdg v0.5.3
@@ -8,8 +8,8 @@ require (
 	github.com/olekukonko/tablewriter v1.1.4
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
-	golang.org/x/sys v0.47.0
-	golang.org/x/term v0.45.0
+	golang.org/x/sys v0.48.0
+	golang.org/x/term v0.46.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
